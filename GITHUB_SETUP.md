@@ -39,3 +39,5 @@ Your code will be on GitHub at `https://github.com/YOUR_USERNAME/DoctorDesk`.
 ---
 
 **Note:** `.env` files are in `.gitignore`, so secrets are not pushed. On a new machine or for deployment, copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to `frontend/.env`, then fill in the values.
+
+**Deploy backend on Railway:** See [docs/RAILWAY_DEPLOY.md](docs/RAILWAY_DEPLOY.md) for MySQL setup, env vars, and loading the schema with `backend/scripts/runFullSetup.js`.

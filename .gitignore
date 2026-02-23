@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Build output
+frontend/dist/
+dist/
+
+# Uploads (user-uploaded files; keep folder structure in code if needed)
+backend/uploads/
+
+# Logs and runtime
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Optional
+*.tgz

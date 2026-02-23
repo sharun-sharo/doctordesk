@@ -1,0 +1,114 @@
+{
+  "info": {
+    "name": "Doctor Desk API",
+    "description": "Doctor Desk - REST API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api/v1" },
+    { "key": "accessToken", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@clinic.com\",\n  \"password\": \"SuperAdmin@123\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        },
+        {
+          "name": "Me",
+          "request": { "method": "GET", "url": "{{baseUrl}}/auth/me" }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@clinic.com\"\n}" },
+            "url": "{{baseUrl}}/auth/forgot-password"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        { "name": "Stats", "request": { "method": "GET", "url": "{{baseUrl}}/dashboard/stats" } },
+        { "name": "Revenue Chart", "request": { "method": "GET", "url": "{{baseUrl}}/dashboard/revenue-chart?months=6" } },
+        { "name": "Patient Chart", "request": { "method": "GET", "url": "{{baseUrl}}/dashboard/patient-chart?months=6" } }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        { "name": "List Users", "request": { "method": "GET", "url": "{{baseUrl}}/users?page=1&limit=20" } },
+        { "name": "Get Doctors", "request": { "method": "GET", "url": "{{baseUrl}}/users/doctors" } },
+        { "name": "Get User", "request": { "method": "GET", "url": "{{baseUrl}}/users/1" }]
+    },
+    {
+      "name": "Patients",
+      "item": [
+        { "name": "List Patients", "request": { "method": "GET", "url": "{{baseUrl}}/patients?page=1&limit=20" } },
+        { "name": "Get Patient", "request": { "method": "GET", "url": "{{baseUrl}}/patients/1" }]
+    },
+    {
+      "name": "Appointments",
+      "item": [
+        { "name": "List Appointments", "request": { "method": "GET", "url": "{{baseUrl}}/appointments?page=1&limit=20" } },
+        { "name": "Get Slots", "request": { "method": "GET", "url": "{{baseUrl}}/appointments/slots?doctor_id=1&date=2025-02-20" } }
+      ]
+    },
+    {
+      "name": "Prescriptions",
+      "item": [
+        { "name": "List Prescriptions", "request": { "method": "GET", "url": "{{baseUrl}}/prescriptions?page=1&limit=20" } }
+      ]
+    },
+    {
+      "name": "Invoices",
+      "item": [
+        { "name": "List Invoices", "request": { "method": "GET", "url": "{{baseUrl}}/invoices?page=1&limit=20" } }
+      ]
+    },
+    {
+      "name": "Medicines",
+      "item": [
+        { "name": "List Medicines", "request": { "method": "GET", "url": "{{baseUrl}}/medicines?page=1&limit=20" } },
+        { "name": "Low Stock", "request": { "method": "GET", "url": "{{baseUrl}}/medicines/low-stock" } ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        { "name": "Revenue", "request": { "method": "GET", "url": "{{baseUrl}}/reports/revenue?period=monthly" } },
+        { "name": "Appointment Summary", "request": { "method": "GET", "url": "{{baseUrl}}/reports/appointment-summary" } ]
+    },
+    {
+      "name": "Activity",
+      "item": [
+        { "name": "Activity Logs", "request": { "method": "GET", "url": "{{baseUrl}}/activity/logs?page=1&limit=50" } },
+        { "name": "Login History", "request": { "method": "GET", "url": "{{baseUrl}}/activity/login-history" } ]
+    }
+  ]
+}

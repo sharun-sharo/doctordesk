@@ -1,0 +1,392 @@
+const { pool } = require('../config/database');
+const { ROLES } = require('../config/roles');
+
+async function getStats(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const roleId = req.user.roleId;
+    // Doctor/Admin: only their data. Receptionist: all clinic appointments (no doctor filter).
+    const doctorId = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)
+      ? userId
+      : null;
+
+    const [patientsCount] = await pool.execute(
+      'SELECT COUNT(*) AS total FROM patients WHERE deleted_at IS NULL'
+    );
+
+    let upcomingSql = `SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
+       AND status = 'scheduled' AND appointment_date >= CURDATE()`;
+    let todaySql = `SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
+       AND appointment_date = CURDATE() AND status IN ('scheduled','completed')`;
+    const appointmentParams = doctorId != null ? [doctorId] : [];
+    if (doctorId != null) {
+      upcomingSql += ' AND doctor_id = ?';
+      todaySql += ' AND doctor_id = ?';
+    }
+    const [appointmentsCount] = await pool.execute(upcomingSql, appointmentParams);
+    const [todayAppointments] = await pool.execute(todaySql, appointmentParams);
+
+    let revenueQuery = 'SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL';
+    const revenueParams = [];
+    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+      revenueQuery =
+        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ?';
+      revenueParams.push(userId);
+    }
+    const [revenue] = await pool.execute(revenueQuery, revenueParams);
+
+    let appointmentsQuery = `
+      SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
+      AND appointment_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`;
+    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+      appointmentsQuery += ' AND doctor_id = ?';
+    }
+    const [last30Appointments] = await pool.execute(
+      appointmentsQuery,
+      (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []
+    );
+
+    const data = {
+      totalPatients: patientsCount[0].total,
+      upcomingAppointments: appointmentsCount[0].total,
+      todayAppointments: todayAppointments[0].total,
+      totalRevenue: parseFloat(revenue[0].total) || 0,
+      last30DaysAppointments: last30Appointments[0].total,
+    };
+
+    if (roleId === ROLES.SUPER_ADMIN) {
+      const [[doctorsRow]] = await pool.execute(
+        'SELECT COUNT(*) AS total FROM users WHERE deleted_at IS NULL AND role_id IN (?, ?)',
+        [ROLES.ADMIN, ROLES.DOCTOR]
+      );
+      const [[receptionistsRow]] = await pool.execute(
+        'SELECT COUNT(*) AS total FROM users WHERE deleted_at IS NULL AND role_id = ?',
+        [ROLES.RECEPTIONIST]
+      );
+      data.totalDoctors = doctorsRow.total;
+      data.totalReceptionists = receptionistsRow.total;
+      let subscriptionRevenue = 0;
+      try {
+        const [[subRevRow]] = await pool.execute(
+          'SELECT COALESCE(SUM(amount), 0) AS total FROM subscriptions WHERE end_date >= CURDATE()'
+        );
+        subscriptionRevenue = parseFloat(subRevRow?.total ?? 0);
+      } catch (subErr) {
+        // Subscriptions table may not exist if migration not run; keep counts intact
+      }
+      data.subscriptionRevenue = subscriptionRevenue;
+    }
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+async function getRevenueChart(req, res, next) {
+  try {
+    const range = req.query.range;
+    const roleId = req.user.roleId;
+    const userId = req.user.id;
+
+    if (range === 'weekly') {
+      // Current week Monday–Sunday (MySQL WEEKDAY: 0=Mon, 6=Sun)
+      let query = `
+        SELECT DATE(created_at) AS d, SUM(total) AS revenue
+        FROM invoices WHERE deleted_at IS NULL
+        AND DATE(created_at) BETWEEN
+          DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+          AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY)
+        GROUP BY DATE(created_at)
+      `;
+      const params = [];
+      if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+        query = `
+          SELECT DATE(i.created_at) AS d, SUM(i.total) AS revenue
+          FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id
+          WHERE i.deleted_at IS NULL AND a.doctor_id = ?
+          AND DATE(i.created_at) BETWEEN
+            DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+            AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY)
+          GROUP BY DATE(i.created_at)
+        `;
+        params.push(userId);
+      }
+      const [rows] = await pool.execute(query, params);
+      const byDate = {};
+      const toYMD = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+      rows.forEach((r) => { byDate[toYMD(r.d)] = parseFloat(r.revenue) || 0; });
+      const monday = new Date();
+      monday.setDate(monday.getDate() - monday.getDay() + (monday.getDay() === 0 ? -6 : 1));
+      const data = WEEKDAY_LABELS.map((label, i) => {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        const key = d.toISOString().slice(0, 10);
+        return { day: label, revenue: byDate[key] || 0 };
+      });
+      return res.json({ success: true, data });
+    }
+
+    const months = parseInt(req.query.months, 10) || 6;
+    let query = `
+      SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, SUM(total) AS revenue
+      FROM invoices WHERE deleted_at IS NULL
+      AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+    `;
+    const params = [months];
+    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+      query = `
+        SELECT DATE_FORMAT(i.created_at, '%Y-%m') AS month, SUM(i.total) AS revenue
+        FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id
+        WHERE i.deleted_at IS NULL AND a.doctor_id = ?
+        AND i.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+        GROUP BY DATE_FORMAT(i.created_at, '%Y-%m') ORDER BY month
+      `;
+      params.unshift(userId);
+    } else {
+      query += ' GROUP BY DATE_FORMAT(created_at, \'%Y-%m\') ORDER BY month';
+    }
+    const [rows] = await pool.execute(query, params);
+    res.json({ success: true, data: rows.map((r) => ({ month: r.month, revenue: parseFloat(r.revenue) || 0 })) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getPatientChart(req, res, next) {
+  try {
+    const months = parseInt(req.query.months, 10) || 6;
+    const [rows] = await pool.execute(
+      `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS count
+       FROM patients WHERE deleted_at IS NULL
+       AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+       GROUP BY DATE_FORMAT(created_at, '%Y-%m') ORDER BY month`,
+      [months]
+    );
+    res.json({
+      success: true,
+      data: rows.map((r) => ({ month: r.month, count: r.count })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getMetrics(req, res, next) {
+  try {
+    const roleId = req.user.roleId;
+    const userId = req.user.id;
+    const revenueTarget = parseFloat(process.env.REVENUE_TARGET || '50000') || 50000;
+
+    const baseWhere = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? ' AND a.doctor_id = ?' : '';
+    const baseWhereNoAlias = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? ' AND doctor_id = ?' : '';
+    const baseParams = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : [];
+
+    // Total patients this month (with appointments)
+    const [totalPatientsThisMonth] = await pool.execute(
+      `SELECT COUNT(DISTINCT a.patient_id) AS total FROM appointments a
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${baseWhere}`,
+      baseParams
+    );
+
+    // New patients this month (created this month)
+    const [newPatientsThisMonth] = await pool.execute(
+      `SELECT COUNT(*) AS total FROM patients WHERE deleted_at IS NULL
+       AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`
+    );
+
+    // Returning patients (2+ appointments ever)
+    const retQuery = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)
+      ? `SELECT COUNT(*) AS total FROM (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND a.doctor_id = ? GROUP BY a.patient_id HAVING COUNT(*) >= 2) t`
+      : `SELECT COUNT(*) AS total FROM (SELECT patient_id FROM appointments WHERE deleted_at IS NULL GROUP BY patient_id HAVING COUNT(*) >= 2) t`;
+    const [returning] = await pool.execute(retQuery, (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []);
+
+    // Today's appointments
+    const [todayAppts] = await pool.execute(
+      `SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
+       AND appointment_date = CURDATE() AND status IN ('scheduled','completed')${baseWhereNoAlias}`,
+      baseParams
+    );
+
+    // No-show rate
+    const [noShowStats] = await pool.execute(
+      `SELECT
+         SUM(CASE WHEN status = 'no_show' THEN 1 ELSE 0 END) AS no_shows,
+         SUM(CASE WHEN status IN ('scheduled','completed','no_show','cancelled') THEN 1 ELSE 0 END) AS total
+       FROM appointments WHERE deleted_at IS NULL AND appointment_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)${baseWhereNoAlias}`,
+      baseParams
+    );
+    const totalForNoShow = parseInt(noShowStats[0]?.total || 0, 10);
+    const noShows = parseInt(noShowStats[0]?.no_shows || 0, 10);
+    const noShowRate = totalForNoShow > 0 ? Math.round((noShows / totalForNoShow) * 100) : 0;
+
+    // Revenue this month
+    let revThisMonthQuery = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+      revThisMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+    }
+    const [revThisMonth] = await pool.execute(revThisMonthQuery, (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []);
+
+    // Revenue last month
+    let revLastMonthQuery = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL AND created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+      revLastMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND i.created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+    }
+    const [revLastMonth] = await pool.execute(revLastMonthQuery, (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []);
+
+    const revThis = parseFloat(revThisMonth[0]?.total || 0);
+    const revLast = parseFloat(revLastMonth[0]?.total || 0);
+    const revChangePercent = revLast > 0 ? Math.round(((revThis - revLast) / revLast) * 100) : (revThis > 0 ? 100 : 0);
+    const achievementPercent = revenueTarget > 0 ? Math.round((revThis / revenueTarget) * 1000) / 10 : 0;
+
+    // Avg revenue per patient (this month)
+    const [patientCountForAvg] = await pool.execute(
+      `SELECT COUNT(DISTINCT a.patient_id) AS total FROM appointments a
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${baseWhere}`,
+      baseParams
+    );
+    const patientsWithAppts = parseInt(patientCountForAvg[0]?.total || 0, 10);
+    const avgRevenuePerPatient = patientsWithAppts > 0 ? Math.round((revThis / patientsWithAppts) * 100) / 100 : 0;
+
+    // Year to Date revenue (from January 1st of current year)
+    let yearToDateRevenueQuery = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL AND created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')`;
+    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+      yearToDateRevenueQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')`;
+    }
+    const [yearToDateRevenue] = await pool.execute(yearToDateRevenueQuery, (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []);
+
+    // Collection vs Pending
+    let collectionQuery = `SELECT COALESCE(SUM(paid_amount), 0) AS collected, COALESCE(SUM(total - paid_amount), 0) AS pending FROM invoices WHERE deleted_at IS NULL`;
+    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+      collectionQuery = `SELECT COALESCE(SUM(i.paid_amount), 0) AS collected, COALESCE(SUM(i.total - i.paid_amount), 0) AS pending FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ?`;
+    }
+    const [collection] = await pool.execute(collectionQuery, (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []);
+
+    // Avg consultation time (from completed appointments with end_time)
+    const avgConsultQuery = `SELECT AVG(TIMESTAMPDIFF(MINUTE, CONCAT(a.appointment_date, ' ', a.start_time), CONCAT(a.appointment_date, ' ', COALESCE(a.end_time, ADDTIME(a.start_time, '00:30:00'))))) AS avg_mins
+       FROM appointments a WHERE a.deleted_at IS NULL AND a.status = 'completed'${baseWhere}`;
+    const [avgConsult] = await pool.execute(avgConsultQuery, baseParams);
+    const avgConsultMins = avgConsult[0]?.avg_mins != null ? Math.round(parseFloat(avgConsult[0].avg_mins)) : null;
+
+    // Appointment utilization (completed+scheduled this month / estimated slots)
+    const [utilized] = await pool.execute(
+      `SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL AND appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND status IN ('scheduled','completed')${baseWhereNoAlias}`,
+      baseParams
+    );
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const estimatedSlots = 18 * daysInMonth; // 18 slots/day * days
+    const utilizationRate = estimatedSlots > 0 ? Math.round((parseInt(utilized[0]?.total || 0, 10) / estimatedSlots) * 100) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalPatientsThisMonth: parseInt(totalPatientsThisMonth[0]?.total || 0, 10),
+        newPatientsThisMonth: parseInt(newPatientsThisMonth[0]?.total || 0, 10),
+        returningPatients: parseInt(returning[0]?.total || 0, 10),
+        todayAppointments: parseInt(todayAppts[0]?.total || 0, 10),
+        noShowRate,
+        avgRevenuePerPatient,
+        totalPatientsWithAppts: patientsWithAppts,
+        revenueThisMonth: revThis,
+        revenueLastMonth: revLast,
+        revenueChangePercent: revChangePercent,
+        revenueTarget,
+        achievementPercent,
+        yearToDateRevenue: parseFloat(yearToDateRevenue[0]?.total || 0),
+        collected: parseFloat(collection[0]?.collected || 0),
+        pending: parseFloat(collection[0]?.pending || 0),
+        avgConsultationMinutes: avgConsultMins,
+        utilizationRate,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getWeeklyPatientTrend(req, res, next) {
+  try {
+    const weeks = parseInt(req.query.weeks, 10) || 4;
+    const [rows] = await pool.execute(
+      `SELECT YEARWEEK(created_at, 3) AS week_num, MIN(created_at) AS week_start, COUNT(*) AS count
+       FROM patients WHERE deleted_at IS NULL
+       AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? WEEK)
+       GROUP BY YEARWEEK(created_at, 3) ORDER BY week_num`,
+      [weeks]
+    );
+    res.json({
+      success: true,
+      data: rows.map((r, i) => ({
+        week: `Week ${i + 1}`,
+        weekNum: r.week_num,
+        label: r.week_start ? new Date(r.week_start).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : `W${r.week_num}`,
+        count: r.count,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getDailyAppointmentDistribution(req, res, next) {
+  try {
+    const roleId = req.user.roleId;
+    const userId = req.user.id;
+    const baseWhere = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? ' AND doctor_id = ?' : '';
+    const params = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : [];
+    const [rows] = await pool.execute(
+      `SELECT DAYNAME(appointment_date) AS day_name, COUNT(*) AS count
+       FROM appointments WHERE deleted_at IS NULL
+       AND appointment_date >= DATE_SUB(CURDATE(), INTERVAL 4 WEEK)${baseWhere}
+       GROUP BY DAYOFWEEK(appointment_date), day_name ORDER BY DAYOFWEEK(appointment_date)`,
+      params
+    );
+    const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const byDay = {};
+    rows.forEach((r) => {
+      const d = r.day_name?.slice(0, 3) || '—';
+      byDay[d] = r.count;
+    });
+    const data = dayOrder.map((d) => ({ day: d, count: byDay[d] || 0 }));
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getNewVsReturningChart(req, res, next) {
+  try {
+    const months = parseInt(req.query.months, 10) || 6;
+    const roleId = req.user.roleId;
+    const userId = req.user.id;
+    const doctorFilter = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? ' AND a.doctor_id = ?' : '';
+    const params = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [months, userId] : [months];
+    const [rows] = await pool.execute(
+      `SELECT DATE_FORMAT(a.appointment_date, '%Y-%m') AS month,
+         COUNT(DISTINCT CASE WHEN p.created_at >= DATE_FORMAT(a.appointment_date, '%Y-%m-01') AND p.created_at < DATE_ADD(DATE_FORMAT(a.appointment_date, '%Y-%m-01'), INTERVAL 1 MONTH) THEN a.patient_id END) AS new_patients,
+         COUNT(DISTINCT CASE WHEN p.created_at < DATE_FORMAT(a.appointment_date, '%Y-%m-01') THEN a.patient_id END) AS returning
+       FROM appointments a
+       INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)${doctorFilter}
+       GROUP BY DATE_FORMAT(a.appointment_date, '%Y-%m') ORDER BY month`,
+      params
+    );
+    res.json({
+      success: true,
+      data: rows.map((r) => ({
+        month: r.month,
+        newPatients: r.new_patients || 0,
+        returning: r.returning || 0,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { getStats, getRevenueChart, getPatientChart, getMetrics, getWeeklyPatientTrend, getDailyAppointmentDistribution, getNewVsReturningChart };

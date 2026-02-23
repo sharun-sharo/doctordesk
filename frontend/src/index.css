@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-size: 15px;
+  }
+  body {
+    @apply bg-surface text-gray-800 antialiased font-sans leading-relaxed;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+}
+
+@layer components {
+  /* Buttons – enhanced for clarity and touch targets */
+  .btn-primary {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-primary-600 px-6 py-2.5 text-[15px] font-semibold text-white shadow-md transition-all duration-200 hover:bg-primary-700 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.99];
+  }
+  .btn-secondary {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border-2 border-gray-200 bg-white px-6 py-2.5 text-[15px] font-medium text-gray-800 transition-all duration-200 hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+  .btn-ghost {
+    @apply inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-body font-medium text-content-muted transition-colors hover:bg-gray-100 hover:text-content focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+  .btn-danger {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border-2 border-red-200 bg-red-50 px-6 py-2.5 text-[15px] font-medium text-red-700 transition-all duration-200 hover:bg-red-100 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2;
+  }
+  .btn-outline {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border-2 border-primary-600 bg-transparent px-6 py-2.5 text-[15px] font-medium text-primary-600 transition-all duration-200 hover:bg-primary-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+  /* Tab group – pill style */
+  .tabs-pill {
+    @apply inline-flex rounded-full border border-gray-200 bg-gray-50 p-1;
+  }
+  .tab-pill {
+    @apply rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-gray-50;
+  }
+  .tab-pill-active {
+    @apply bg-white text-primary-600 shadow-sm font-semibold;
+  }
+  .tab-pill-inactive {
+    @apply text-gray-600 hover:text-gray-900;
+  }
+  .input-field {
+    @apply w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-[15px] text-gray-800 placeholder-gray-400 transition-all focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500/20;
+  }
+  .input-label {
+    @apply mb-1.5 block text-label text-content;
+  }
+  .card {
+    @apply rounded-xl bg-white p-6 shadow-md;
+  }
+  .card-hover {
+    @apply card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-caption font-medium;
+  }
+}
+
+.page-enter {
+  animation: fadeIn 0.2s ease-out;
+}
+
+*:focus-visible {
+  @apply outline-none ring-2 ring-primary-500 ring-offset-2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

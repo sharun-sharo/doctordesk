@@ -33,7 +33,7 @@ const allNavItems = [
   { to: '/revenue', label: 'Revenue', icon: 'CircleDollarSign', end: true, roles: [1], section: 'analytics' },
   { to: '/activity/logs', label: 'Activity Logs', icon: 'Activity', end: false, roles: [1], section: 'analytics' },
   { to: '/activity/login-history', label: 'Login History', icon: 'History', end: false, roles: [1], section: 'analytics' },
-  { to: '/profile', label: 'Profile', icon: 'UserCircle', end: true, roles: [3, 4], section: 'account' },
+  { to: '/profile', label: 'Profile', icon: 'UserCircle', end: true, roles: [1, 3, 4], section: 'account' },
   { to: '/settings', label: 'Settings', icon: 'Settings', end: true, roles: [1, 2], section: 'account' },
 ];
 

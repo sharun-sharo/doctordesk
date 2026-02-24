@@ -48,6 +48,16 @@ SEED_SUPER_ADMIN_PASSWORD=YourSecurePassword \
 node scripts/seed.js
 ```
 
+4. Optional: add demo data for **admin@doctordesk.com** (patients, appointments, prescriptions, invoices):
+
+```bash
+# Same DB_* env as above
+node scripts/seedDemoData.js
+# or: npm run seed:demo
+```
+
+Log in as `admin@doctordesk.com` / `Admin@123` to see the demo data.
+
 ## 5. Redeploy backend
 
 After variables and schema are set, **Redeploy** the backend service. It should start without “Database connection failed”.

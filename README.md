@@ -120,6 +120,7 @@ DoctorDesk/
 |----------------|-------------|
 | `npm run migrate` (backend) | Run `database/schema.sql` |
 | `npm run seed` (backend)    | Create Super Admin (overridable via `SEED_SUPER_ADMIN_*` env) |
+| `npm run seed:demo` (backend) | Add demo data for admin@doctordesk.com (patients, appointments, prescriptions, invoices) |
 | `npm run dev` (backend)    | Start API with nodemon |
 | `npm start` (backend)      | Start API (production) |
 | `npm run dev` (frontend)    | Start Vite dev server |

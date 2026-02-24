@@ -55,7 +55,8 @@ const RevenueTooltip = ({ active, payload, label }) => {
 };
 
 export default function Dashboard() {
-  const { user, isReceptionist, isSuperAdmin } = useAuth();
+  const { user, isReceptionist, isAssistantDoctor, isSuperAdmin } = useAuth();
+  const isReceptionistOrAssistant = isReceptionist || isAssistantDoctor;
   const [stats, setStats] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [revenueChart, setRevenueChart] = useState([]);
@@ -109,8 +110,8 @@ export default function Dashboard() {
 
     const requests = [
       api.get('/dashboard/stats'),
-      isReceptionist ? Promise.resolve({ data: { data: null } }) : api.get('/dashboard/metrics'),
-      isReceptionist ? Promise.resolve({ data: { data: [] } }) : api.get('/dashboard/revenue-chart?range=weekly'),
+      isReceptionistOrAssistant ? Promise.resolve({ data: { data: null } }) : api.get('/dashboard/metrics'),
+      isReceptionistOrAssistant ? Promise.resolve({ data: { data: [] } }) : api.get('/dashboard/revenue-chart?range=weekly'),
       api.get('/dashboard/daily-appointment-distribution'),
       api.get('/appointments', { params: { limit: 50, page: 1, date_from: dateFrom } }),
       api.get('/appointments', { params: { limit: 1, page: 1 } }),
@@ -128,7 +129,7 @@ export default function Dashboard() {
         console.error('Dashboard fetch error:', err);
       })
       .finally(() => setLoading(false));
-  }, [isReceptionist, isSuperAdmin]);
+  }, [isReceptionistOrAssistant, isSuperAdmin]);
 
   useEffect(() => {
     if (activeOverviewTab === 'all') fetchAllAppointments(allPage);
@@ -167,7 +168,7 @@ export default function Dashboard() {
           to: '/appointments',
           gradientIndex: 1,
         },
-        ...(isReceptionist
+        ...(isReceptionistOrAssistant
           ? []
           : [
               {
@@ -263,8 +264,8 @@ export default function Dashboard() {
       />
       )}
 
-      {/* Revenue – hidden for receptionist and Super Admin */}
-      {!isReceptionist && !isSuperAdmin && (
+      {/* Revenue – hidden for receptionist/assistant doctor and Super Admin */}
+      {!isReceptionistOrAssistant && !isSuperAdmin && (
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow duration-200 hover:shadow-md sm:p-6 lg:p-8 overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
         <div className="mb-4 sm:mb-6 flex flex-wrap items-baseline justify-between gap-2">
           <div>

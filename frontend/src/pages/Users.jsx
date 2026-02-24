@@ -37,13 +37,13 @@ export default function Users() {
     }).catch(() => toast.error('Failed'));
   };
 
-  const roleName = (r) => ({ 2: 'Admin', 3: 'Doctor', 4: 'Receptionist' }[r] || '');
+  const roleName = (r) => ({ 2: 'Admin', 3: 'Doctor', 4: 'Receptionist', 5: 'Assistant doctor' }[r] || '');
 
   const columns = [
     { key: 'name', header: 'Name', render: (v) => <span className="font-medium">{v}</span> },
     { key: 'email', header: 'Email' },
     { key: 'role_id', header: 'Role', render: (v, row) => roleName(v) || row.role_name },
-    { key: 'assigned_doctor_names', header: 'Assigned to', render: (v, row) => (row.role_id === 4 ? (v || row.assigned_admin_name || '—') : '—') },
+    { key: 'assigned_doctor_names', header: 'Assigned to', render: (v, row) => (row.role_id === 4 || row.role_id === 5 ? (v || row.assigned_admin_name || '—') : '—') },
     { key: 'is_active', header: 'Status', render: (v) => <StatusBadge status={v ? 'active' : 'inactive'} /> },
     {
       key: 'id',
@@ -70,7 +70,8 @@ export default function Users() {
           <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="input-field w-48">
             <option value="">All roles</option>
             <option value="2">Admin</option>
-            <option value="4">Reception</option>
+            <option value="4">Receptionist</option>
+            <option value="5">Assistant doctor</option>
           </select>
         </div>
         <Link to="/users/new" className="btn-primary inline-flex items-center gap-2 w-fit">

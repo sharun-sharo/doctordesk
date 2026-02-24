@@ -55,7 +55,7 @@ export default function AppointmentForm() {
     name: '',
     phone: '',
     email: '',
-    date_of_birth: '',
+    age: '',
     gender: '',
   });
   const [newPatientSaving, setNewPatientSaving] = useState(false);
@@ -254,14 +254,18 @@ export default function AppointmentForm() {
         name,
         phone,
         email: newPatientForm.email?.trim() || undefined,
-        date_of_birth: newPatientForm.date_of_birth || undefined,
+        date_of_birth: (() => {
+          const ageNum = newPatientForm.age?.trim() ? parseInt(newPatientForm.age.trim(), 10) : null;
+          if (ageNum == null || Number.isNaN(ageNum) || ageNum < 0 || ageNum > 150) return undefined;
+          return `${new Date().getFullYear() - ageNum}-01-01`;
+        })(),
         gender: newPatientForm.gender || undefined,
       });
       const created = data.data;
       setPatients((prev) => [created, ...prev]);
       setForm((f) => ({ ...f, patient_id: created.id }));
       setAddPatientDrawerOpen(false);
-      setNewPatientForm({ name: '', phone: '', email: '', date_of_birth: '', gender: '' });
+      setNewPatientForm({ name: '', phone: '', email: '', age: '', gender: '' });
       setPatientSearch('');
       toast.success('Patient added and selected');
     } catch (err) {
@@ -814,11 +818,18 @@ export default function AppointmentForm() {
             />
           </div>
           <div>
-            <DatePicker
-              label="Date of Birth"
-              placeholder="mm/dd/yyyy"
-              value={newPatientForm.date_of_birth}
-              onChange={(v) => setNewPatientForm((f) => ({ ...f, date_of_birth: v || '' }))}
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[#64748B]">
+              Age
+            </label>
+            <input
+              type="number"
+              name="age"
+              min={0}
+              max={150}
+              value={newPatientForm.age}
+              onChange={handleNewPatientChange}
+              placeholder="Optional"
+              className={inputBase}
             />
           </div>
           <div>

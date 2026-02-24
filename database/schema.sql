@@ -326,4 +326,5 @@ INSERT INTO `roles` (`id`, `name`, `description`) VALUES
 (1, 'super_admin', 'System owner - full access'),
 (2, 'admin', 'Clinic admin - manage staff and reports'),
 (3, 'doctor', 'Doctor - appointments, prescriptions, patient records'),
-(4, 'receptionist', 'Receptionist - register patients, book appointments, billing');
+(4, 'receptionist', 'Receptionist - register patients, book appointments, billing'),
+(5, 'assistant_doctor', 'Assistant doctor - same as receptionist');

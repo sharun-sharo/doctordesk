@@ -37,7 +37,7 @@ function getDaysInMonth(year, month) {
 export default function Appointments() {
   const { isDoctor, isAdmin, user } = useAuth();
   const isDoctorOrAdmin = isDoctor || isAdmin;
-  const canChangeStatus = [1, 2, 4].includes(user?.roleId);
+  const canChangeStatus = [1, 2, 4, 5].includes(user?.roleId);
   const [list, setList] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 });
   const [filters, setFilters] = useState(() => {

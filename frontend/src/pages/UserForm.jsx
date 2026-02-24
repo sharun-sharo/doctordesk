@@ -31,7 +31,7 @@ export default function UserForm() {
   const [doctors, setDoctors] = useState([]);
   const [doctorSearch, setDoctorSearch] = useState('');
   useEffect(() => {
-    if (isEdit && form.role_id === 4) {
+    if (isEdit && (form.role_id === 4 || form.role_id === 5)) {
       api.get('/users/doctors').then(({ data }) => setDoctors(data.data || [])).catch(() => {});
     }
   }, [isEdit, form.role_id]);
@@ -63,7 +63,7 @@ export default function UserForm() {
     try {
       if (isEdit) {
         const payload = { name: form.name, phone: form.phone, is_active: form.is_active, ...(form.password ? { password: form.password } : {}) };
-        if (form.role_id === 4) payload.assigned_doctor_ids = form.assigned_doctor_ids || [];
+        if (form.role_id === 4 || form.role_id === 5) payload.assigned_doctor_ids = form.assigned_doctor_ids || [];
         await api.put(`/users/${id}`, payload);
         toast.success('Updated');
       } else {
@@ -101,7 +101,8 @@ export default function UserForm() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
             <select name="role_id" value={form.role_id} onChange={handleChange} className="input-field" required>
               <option value={2}>Admin</option>
-              <option value={4}>Reception</option>
+              <option value={4}>Receptionist</option>
+              <option value={5}>Assistant doctor</option>
             </select>
           </div>
         )}
@@ -109,10 +110,10 @@ export default function UserForm() {
           <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
           <input name="phone" value={form.phone} onChange={handleChange} className="input-field" />
         </div>
-        {isEdit && form.role_id === 4 && (
+        {isEdit && (form.role_id === 4 || form.role_id === 5) && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Assigned to (Doctors)</label>
-            <p className="text-xs text-gray-500 mb-2">Select one or more doctors this receptionist is assigned to.</p>
+            <p className="text-xs text-gray-500 mb-2">Select one or more doctors this user is assigned to.</p>
             <input
               type="text"
               value={doctorSearch}

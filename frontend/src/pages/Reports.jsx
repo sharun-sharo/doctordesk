@@ -68,7 +68,8 @@ const REPORT_VIEW_TABS = [
 ];
 
 export default function Reports() {
-  const { isSuperAdmin, isReceptionist, isAdmin } = useAuth();
+  const { isSuperAdmin, isReceptionist, isAssistantDoctor, isAdmin } = useAuth();
+  const isReceptionistOrAssistant = isReceptionist || isAssistantDoctor;
   const location = useLocation();
   const navigate = useNavigate();
   const isDetailedPath = location.pathname === '/reports/detailed' || location.pathname.endsWith('/reports/detailed');
@@ -106,7 +107,7 @@ export default function Reports() {
   const isDaily = range === '7D' || range === '30D';
 
   useEffect(() => {
-    if (isReceptionist) {
+    if (isReceptionistOrAssistant) {
       setReportLoading(true);
       const params = { limit: 500, page: 1 };
       if (!isAllTime && from && to) {
@@ -158,7 +159,7 @@ export default function Reports() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [range, isSuperAdmin, isReceptionist, from, to, isAllTime, customFrom, customTo]);
+  }, [range, isSuperAdmin, isReceptionistOrAssistant, from, to, isAllTime, customFrom, customTo]);
 
 
   const handleDownloadAppointmentsPdf = () => {
@@ -241,7 +242,7 @@ export default function Reports() {
       .finally(() => setDownloading(false));
   };
 
-  if (loading && !isSuperAdmin && !isReceptionist && !revenue.length) return <PageSkeleton />;
+  if (loading && !isSuperAdmin && !isReceptionistOrAssistant && !revenue.length) return <PageSkeleton />;
 
   if (isAdmin || isSuperAdmin) {
     return (
@@ -273,7 +274,7 @@ export default function Reports() {
               ? 'Last 1 year'
               : '';
 
-  if (isReceptionist) {
+  if (isReceptionistOrAssistant) {
     return (
       <div className="space-y-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

@@ -39,6 +39,10 @@ export default function PatientView() {
         <div className="card">
           <h2 className="text-title text-slate-900 mb-4">Details</h2>
           <dl className="space-y-3 text-body">
+            <div>
+              <dt className="text-caption text-slate-500">Patient ID</dt>
+              <dd className="font-mono text-slate-700">{patient.id != null ? `PAT-${String(patient.id).padStart(5, '0')}` : '—'}</dd>
+            </div>
             <div><dt className="text-caption text-slate-500">Phone</dt><dd>{patient.phone}</dd></div>
             <div><dt className="text-caption text-slate-500">Email</dt><dd>{patient.email || '—'}</dd></div>
             <div><dt className="text-caption text-slate-500">DOB</dt><dd>{patient.date_of_birth || '—'}</dd></div>

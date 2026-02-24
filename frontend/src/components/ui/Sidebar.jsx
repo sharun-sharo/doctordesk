@@ -17,6 +17,7 @@ import {
   History,
   Building2,
   CircleDollarSign,
+  UserPlus,
 } from 'lucide-react';
 import { SECTIONS } from '../../lib/navConfig';
 import Logo from './Logo';
@@ -37,6 +38,7 @@ const iconMap = {
   History,
   Building2,
   CircleDollarSign,
+  UserPlus,
 };
 
 function NavItem({ to, icon, label, end = false, onClick, collapsed }) {

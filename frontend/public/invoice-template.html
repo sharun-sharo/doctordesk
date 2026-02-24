@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Medical Invoice Template</title>
+  <style>
+    :root {
+      --clinic-primary: #0f766e;
+      --clinic-light: #f0fdfa;
+      --text-primary: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --table-header: #f1f5f9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0 48px 48px;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      color: var(--text-primary);
+      line-height: 1.4;
+      max-width: 210mm;
+      margin: 0 auto;
+      background: #fff;
+    }
+    @media print {
+      body { padding: 0; margin: 0; }
+      .no-print { display: none !important; }
+      @page { size: A4; margin: 15mm; }
+    }
+
+    /* Header */
+    .invoice-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+    }
+    .clinic-name {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--clinic-primary);
+      margin: 0 0 4px 0;
+    }
+    .clinic-tagline {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin: 0;
+    }
+    .invoice-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-top: 16px;
+      gap: 24px;
+    }
+    .invoice-number, .invoice-date {
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+    .invoice-number { font-weight: 600; }
+
+    /* Two columns: Doctor | Patient */
+    .details-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-bottom: 24px;
+    }
+    .details-block h3 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin: 0 0 10px 0;
+    }
+    .details-block .name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0 0 4px 0;
+    }
+    .details-block .line {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin: 0 0 2px 0;
+    }
+
+    /* Appointment */
+    .appointment-section {
+      margin-bottom: 24px;
+    }
+    .appointment-section h3 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin: 0 0 8px 0;
+    }
+    .appointment-section .value {
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    /* Billing table */
+    .billing-table-wrap {
+      margin-bottom: 24px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .billing-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .billing-table thead {
+      background: var(--table-header);
+    }
+    .billing-table th {
+      text-align: left;
+      padding: 12px 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .billing-table th.qty,
+    .billing-table th.unit,
+    .billing-table th.amount { text-align: right; }
+    .billing-table td {
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+    .billing-table td.qty,
+    .billing-table td.unit,
+    .billing-table td.amount { text-align: right; }
+    .billing-table tbody tr:hover { background: #fafafa; }
+
+    /* Totals */
+    .totals-wrap {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 28px;
+    }
+    .totals-table {
+      width: 280px;
+      font-size: 14px;
+    }
+    .totals-table tr td {
+      padding: 6px 0;
+      color: var(--text-muted);
+    }
+    .totals-table tr td:last-child { text-align: right; color: var(--text-primary); }
+    .totals-table tr.total-row td {
+      padding-top: 12px;
+      padding-bottom: 4px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--clinic-primary);
+    }
+    .totals-table tr.total-row td:last-child { font-size: 18px; }
+
+    /* Payment details */
+    .payment-section h3 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin: 0 0 10px 0;
+    }
+    .payment-section .line { margin: 4px 0; font-size: 13px; }
+
+    /* Footer */
+    .invoice-footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .no-print {
+      margin-bottom: 16px;
+      padding: 12px;
+      background: var(--clinic-light);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <p class="no-print">Editable medical invoice template. Replace placeholders and use Print (Ctrl+P / Cmd+P) for PDF. Hide this note when printing.</p>
+
+  <header class="invoice-header">
+    <h1 class="clinic-name">DoctorDesk</h1>
+    <p class="clinic-tagline">Medical Invoice</p>
+    <div class="invoice-meta">
+      <div>
+        <div class="invoice-number">Invoice #: INV-2024-001</div>
+        <div class="invoice-date">Date: 24 Feb 2024</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="details-grid">
+    <section class="details-block">
+      <h3>Doctor Details</h3>
+      <p class="name">Dr. Jane Smith</p>
+      <p class="line">Phone: +91 98765 43210</p>
+    </section>
+    <section class="details-block">
+      <h3>Patient Details</h3>
+      <p class="name">Patient Full Name</p>
+      <p class="line">Phone: +91 91234 56789</p>
+      <p class="line">Address: 123, Street, City – 560001</p>
+    </section>
+  </div>
+
+  <section class="appointment-section">
+    <h3>Appointment</h3>
+    <p class="value">Mon, 24 Feb 2024 · 10:30 AM</p>
+  </section>
+
+  <div class="billing-table-wrap">
+    <table class="billing-table">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th class="qty">Qty</th>
+          <th class="unit">Unit Price</th>
+          <th class="amount">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Consultation</td>
+          <td class="qty">1</td>
+          <td class="unit">₹500.00</td>
+          <td class="amount">₹500.00</td>
+        </tr>
+        <tr>
+          <td>General check-up</td>
+          <td class="qty">1</td>
+          <td class="unit">₹300.00</td>
+          <td class="amount">₹300.00</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="totals-wrap">
+    <table class="totals-table">
+      <tr>
+        <td>Subtotal</td>
+        <td>₹800.00</td>
+      </tr>
+      <tr>
+        <td>Tax</td>
+        <td>₹0.00</td>
+      </tr>
+      <tr>
+        <td>Discount</td>
+        <td>-₹0.00</td>
+      </tr>
+      <tr class="total-row">
+        <td>Total</td>
+        <td>₹800.00</td>
+      </tr>
+    </table>
+  </div>
+
+  <section class="payment-section">
+    <h3>Payment Details</h3>
+    <p class="line">Status: Pending</p>
+    <p class="line">Paid: ₹0.00</p>
+    <p class="line">Balance: ₹800.00</p>
+  </section>
+
+  <footer class="invoice-footer">
+    <p>Payment is due within 15 days. Thank you for choosing our clinic. For queries contact the clinic.</p>
+    <p>Generated by DoctorDesk</p>
+  </footer>
+</body>
+</html>

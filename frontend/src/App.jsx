@@ -11,6 +11,7 @@ const PAGE_TITLES = {
   '/receptionists': 'Receptionists',
   '/patients': 'Patients',
   '/patients/new': 'Add Patient',
+  '/walk-ins': 'Walk-ins',
   '/appointments': 'Appointments',
   '/appointments/new': 'New Appointment',
   '/invoices': 'Billing',
@@ -50,6 +51,7 @@ import PatientForm from './pages/PatientForm';
 import PatientView from './pages/PatientView';
 import Appointments from './pages/Appointments';
 import AppointmentForm from './pages/AppointmentForm';
+import WalkIns from './pages/WalkIns';
 import Invoices from './pages/Invoices';
 import InvoiceForm from './pages/InvoiceForm';
 import InvoiceView from './pages/InvoiceView';
@@ -125,6 +127,7 @@ export default function App() {
         <Route path="patients/new" element={<PatientForm />} />
         <Route path="patients/:id/edit" element={<PatientForm />} />
         <Route path="patients/:id" element={<PatientView />} />
+        <Route path="walk-ins" element={<WalkIns />} />
         <Route path="appointments" element={<Appointments />} />
         <Route path="appointments/new" element={<AppointmentForm />} />
         <Route path="appointments/:id/edit" element={<AppointmentForm />} />

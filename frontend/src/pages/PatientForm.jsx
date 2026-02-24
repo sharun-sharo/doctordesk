@@ -96,6 +96,11 @@ export default function PatientForm() {
   return (
     <div className="max-w-2xl">
       <h1 className="text-display text-slate-900 mb-6">{isEdit ? 'Edit Patient' : 'Add Patient'}</h1>
+      {isEdit && form.id != null && (
+        <p className="text-body text-slate-600 mb-4">
+          Patient ID: <span className="font-mono font-medium text-slate-800">PAT-{String(form.id).padStart(5, '0')}</span>
+        </p>
+      )}
       <form onSubmit={handleSubmit} className="card space-y-5">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <FormInput label="Name *" name="name" value={form.name} onChange={handleChange} required />

@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
-import { Plus, FileText, Download, Trash2 } from 'lucide-react';
+import { Plus, Download, Trash2, Upload, Image } from 'lucide-react';
 import DataTable from '../components/ui/DataTable';
-import { PageSkeleton } from '../components/ui/Skeleton';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+const API_ORIGIN = API_BASE.startsWith('http') ? API_BASE.replace(/\/api\/v1\/?$/, '') : '';
 
 const PAYMENT_STATUS_OPTIONS = [
   { value: 'pending', label: 'Pending' },
@@ -18,6 +18,17 @@ export default function Invoices() {
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 });
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState({ logoUrl: null });
+  const [logoUploading, setLogoUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const fetchSettings = () => {
+    api.get('/settings').then(({ data }) => setSettings(data.data || {})).catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
 
   const fetchInvoices = (page = 1) => {
     setLoading(true);
@@ -74,6 +85,31 @@ export default function Invoices() {
       toast.error('Download failed');
     }
   };
+
+  const handleLogoUpload = (e) => {
+    const file = e.target?.files?.[0];
+    if (!file || !file.type.startsWith('image/')) {
+      toast.error('Please select an image (PNG, JPG, etc.)');
+      return;
+    }
+    setLogoUploading(true);
+    const formData = new FormData();
+    formData.append('logo', file);
+    api
+      .post('/settings/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      .then(({ data }) => {
+        setSettings((s) => ({ ...s, logoUrl: data.data?.logoUrl ?? data.logoUrl ?? s.logoUrl }));
+        toast.success('Logo updated. It will appear on new invoice PDFs.');
+        fetchSettings();
+      })
+      .catch(() => toast.error('Failed to upload logo'))
+      .finally(() => {
+        setLogoUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      });
+  };
+
+  const logoSrc = settings.logoUrl ? `${API_ORIGIN || window.location.origin}${settings.logoUrl}` : null;
 
   const columns = [
     { key: 'invoice_number', header: 'Invoice #', render: (v) => <span className="font-medium">{v}</span> },
@@ -132,6 +168,43 @@ export default function Invoices() {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-700 mb-3">Invoice logo</h3>
+        <p className="text-body text-slate-500 mb-3">This logo appears on the top of downloaded invoice PDFs.</p>
+        <div className="flex flex-wrap items-center gap-4">
+          {logoSrc ? (
+            <div className="h-14 w-40 border border-slate-200 rounded-lg overflow-hidden bg-slate-50 flex items-center justify-center shrink-0">
+              <img src={logoSrc} alt="Clinic logo" className="max-h-full max-w-full object-contain" />
+            </div>
+          ) : (
+            <div className="h-14 w-40 border border-dashed border-slate-200 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 text-slate-400">
+              <Image className="h-8 w-8" />
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+            className="hidden"
+            onChange={handleLogoUpload}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={logoUploading}
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            {logoUploading ? (
+              <span className="animate-pulse">Uploading…</span>
+            ) : (
+              <>
+                <Upload className="h-4 w-4" /> Upload logo
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <label className="input-label mb-0">Status</label>

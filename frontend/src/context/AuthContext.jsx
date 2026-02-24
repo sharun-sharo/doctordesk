@@ -47,6 +47,7 @@ export function AuthProvider({ children }) {
   const isAdmin = user?.roleId === 2;
   const isDoctor = user?.roleId === 3;
   const isReceptionist = user?.roleId === 4;
+  const isAssistantDoctor = user?.roleId === 5;
 
   return (
     <AuthContext.Provider
@@ -59,6 +60,7 @@ export function AuthProvider({ children }) {
         isAdmin,
         isDoctor,
         isReceptionist,
+        isAssistantDoctor,
         setUser,
       }}
     >

@@ -119,7 +119,18 @@ export default function Patients() {
       .finally(() => setDeleting(false));
   };
 
+  const formatPatientId = (id) => (id != null ? `PAT-${String(id).padStart(5, '0')}` : '—');
+
   const columns = [
+    {
+      key: 'patient_id',
+      header: 'Patient ID',
+      render: (_, row) => (
+        <span className="font-mono text-sm text-slate-600" title={`ID: ${row.id}`}>
+          {formatPatientId(row.id)}
+        </span>
+      ),
+    },
     {
       key: 'name',
       header: 'Name',
@@ -207,7 +218,7 @@ export default function Patients() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
               <FormInput
                 name="search"
-                placeholder="Search by name, phone, or email…"
+                placeholder="Search by name, phone, email, or patient ID…"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full pl-10"

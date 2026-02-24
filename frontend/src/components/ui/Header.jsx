@@ -11,6 +11,7 @@ const pageTitles = {
   '/receptionists': 'Receptionists',
   '/patients': 'Patients',
   '/patients/new': 'Add Patient',
+  '/walk-ins': 'Walk-ins',
   '/appointments': 'Appointments',
   '/appointments/new': 'New Appointment',
   '/invoices': 'Billing',

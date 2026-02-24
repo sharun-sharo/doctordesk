@@ -14,9 +14,22 @@ const API_PREFIX = process.env.API_PREFIX || '/api/v1';
 // Security
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 const frontendOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
+const allowedOrigins = [
+  frontendOrigin,
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+].filter((o, i, a) => a.indexOf(o) === i);
 app.use(
   cors({
-    origin: process.env.NODE_ENV === 'production' ? frontendOrigin : [frontendOrigin, 'http://localhost:5174', 'http://127.0.0.1:5174', 'http://127.0.0.1:5173'],
+    origin: (origin, cb) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        cb(null, true);
+      } else {
+        cb(null, false);
+      }
+    },
     credentials: true,
   })
 );

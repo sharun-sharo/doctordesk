@@ -217,8 +217,8 @@ export default function Dashboard() {
   return (
     <div className="min-h-0 space-y-10">
       {/* Greeting */}
-      <div className="rounded-2xl border border-slate-100 bg-gradient-to-br from-white to-slate-50/50 px-6 py-6 shadow-sm sm:px-8 sm:py-7">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+      <div className="rounded-2xl border border-slate-100 bg-gradient-to-br from-white to-slate-50/50 px-4 py-5 shadow-sm sm:px-8 sm:py-7">
+        <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl md:text-3xl">
           {greeting}, {displayName} 👋
         </h1>
         <p className="mt-2 text-sm text-slate-500 sm:text-base">
@@ -265,14 +265,14 @@ export default function Dashboard() {
 
       {/* Revenue – hidden for receptionist and Super Admin */}
       {!isReceptionist && !isSuperAdmin && (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow duration-200 hover:shadow-md sm:p-8">
-        <div className="mb-6 flex flex-wrap items-baseline justify-between gap-2">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow duration-200 hover:shadow-md sm:p-6 lg:p-8 overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="mb-4 sm:mb-6 flex flex-wrap items-baseline justify-between gap-2">
           <div>
             <h2 className="text-xl font-semibold text-slate-800 sm:text-2xl">Revenue</h2>
             <p className="mt-1 text-sm text-slate-500">This week (Mon–Sun)</p>
           </div>
         </div>
-        <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="mb-6 sm:mb-8 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
           <div className="group rounded-xl border border-slate-100 bg-slate-50/80 p-4 transition-all duration-200 hover:border-teal-200 hover:bg-teal-50/40 hover:shadow-sm">
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-600 transition-transform duration-200 group-hover:scale-105">

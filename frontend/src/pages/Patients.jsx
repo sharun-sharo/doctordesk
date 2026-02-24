@@ -193,17 +193,17 @@ export default function Patients() {
       >
         <Link
           to="/patients/new"
-          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 active:scale-[0.98]"
+          className="btn-primary inline-flex w-full sm:w-auto justify-center items-center gap-2"
         >
-          <Plus className="h-5 w-5" aria-hidden />
+          <Plus className="h-5 w-5 shrink-0" aria-hidden />
           Add Patient
         </Link>
       </PageHeader>
 
       <div className="space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <form onSubmit={handleSearchSubmit} className="flex flex-1 flex-wrap items-end gap-3">
-            <div className="relative min-w-0 flex-1 sm:min-w-[280px]">
+          <form onSubmit={handleSearchSubmit} className="flex flex-1 flex-col sm:flex-row flex-wrap items-stretch sm:items-end gap-3">
+            <div className="relative min-w-0 flex-1 sm:min-w-[200px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
               <FormInput
                 name="search"
@@ -216,7 +216,7 @@ export default function Patients() {
             <select
               value={gender}
               onChange={(e) => setGender(e.target.value)}
-              className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="input-field h-11 w-full sm:w-auto min-w-0"
               aria-label="Filter by gender"
             >
               {GENDER_OPTIONS.map((o) => (
@@ -228,7 +228,7 @@ export default function Patients() {
             <select
               value={ageRange}
               onChange={(e) => setAgeRange(e.target.value)}
-              className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="input-field h-11 w-full sm:w-auto min-w-0"
               aria-label="Filter by age range"
             >
               {AGE_RANGE_OPTIONS.map((o) => (
@@ -239,7 +239,7 @@ export default function Patients() {
             </select>
             <button
               type="submit"
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-all duration-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="btn-secondary w-full sm:w-auto min-h-[44px]"
             >
               Search
             </button>

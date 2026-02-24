@@ -26,8 +26,8 @@ export default function DataTable({
     <div
       className={`overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md ${className}`}
     >
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-left">
+      <div className="overflow-x-auto -mx-2 sm:mx-0" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <table className="w-full min-w-[600px] border-collapse text-left">
           <thead>
             <tr className="border-b border-slate-200/80 bg-slate-50/90">
               {columns.map((col) => {
@@ -36,7 +36,7 @@ export default function DataTable({
                 return (
                   <th
                     key={col.key}
-                    className={`px-5 py-4 text-xs font-semibold uppercase tracking-wider text-slate-600 ${
+                    className={`px-3 py-3 sm:px-5 sm:py-4 text-xs font-semibold uppercase tracking-wider text-slate-600 ${
                       stickyHeader ? 'sticky top-0 z-10 bg-slate-50/95 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]' : ''
                     } ${isSortable ? 'cursor-pointer select-none' : ''}`}
                     style={col.width ? { width: col.width } : undefined}
@@ -99,7 +99,7 @@ export default function DataTable({
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className="px-5 py-4 text-sm text-slate-800"
+                      className="px-3 py-3 text-sm text-slate-800 sm:px-5 sm:py-4"
                     >
                       {col.render ? col.render(row[col.key], row) : row[col.key]}
                     </td>
@@ -111,7 +111,7 @@ export default function DataTable({
         </table>
       </div>
       {pagination && pagination.total > 0 && !loading && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3 border-t border-slate-100 px-3 py-3 sm:px-5">
           <p className="text-sm text-slate-500">
             Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
           </p>

@@ -82,10 +82,10 @@ export default function Profile() {
   if (loading) return <PageSkeleton />;
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Profile</h1>
+    <div className="min-w-0">
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-6">Profile</h1>
 
-      <form onSubmit={handleSubmit} className="card max-w-xl space-y-4 mb-8">
+      <form onSubmit={handleSubmit} className="card max-w-xl w-full space-y-4 mb-6 sm:mb-8">
         <h2 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">Account details</h2>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
@@ -142,7 +142,7 @@ export default function Profile() {
         </div>
       </form>
 
-      <form onSubmit={handleChangePassword} className="card max-w-xl space-y-4">
+      <form onSubmit={handleChangePassword} className="card max-w-xl w-full space-y-4">
         <h2 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">Change password</h2>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Current password *</label>

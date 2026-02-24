@@ -43,7 +43,7 @@ export default function Layout() {
             onClick={() => setMobileSidebarOpen(false)}
             aria-hidden="true"
           />
-          <div className="fixed inset-y-0 left-0 z-50 w-72 lg:hidden">
+          <div className="fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] max-w-[18rem] lg:hidden pl-[env(safe-area-inset-left,0)]" style={{ maxHeight: '100dvh' }}>
             <Sidebar
               collapsed={false}
               onToggle={() => setMobileSidebarOpen(false)}
@@ -65,8 +65,8 @@ export default function Layout() {
           onSearchChange={setHeaderSearch}
           user={user}
         />
-        <main className="flex-1 bg-gray-50 p-6 sm:p-8 transition-[padding] duration-200">
-          <div className="page-enter mx-auto max-w-[1600px]">
+        <main className="flex-1 bg-gray-50 p-4 sm:p-6 lg:p-8 transition-[padding] duration-200 min-w-0">
+          <div className="page-enter mx-auto max-w-[1600px] w-full min-w-0">
             <Outlet />
           </div>
         </main>

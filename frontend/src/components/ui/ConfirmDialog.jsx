@@ -27,12 +27,12 @@ export default function ConfirmDialog({
   return (
     <Modal open={open} onClose={onClose} title={title} size="sm">
       {message && <p className="mb-6 text-sm text-slate-600">{message}</p>}
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-col-reverse sm:flex-row flex-wrap justify-end gap-2">
         <button
           type="button"
           onClick={onClose}
           disabled={loading}
-          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:ring-offset-2 disabled:opacity-60"
+          className="w-full sm:w-auto min-h-[44px] rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:ring-offset-2 disabled:opacity-60 touch-manipulation"
           aria-label={cancelLabel}
         >
           {cancelLabel}
@@ -41,7 +41,7 @@ export default function ConfirmDialog({
           type="button"
           onClick={handleConfirm}
           disabled={loading}
-          className={`rounded-xl px-4 py-2.5 text-sm font-medium shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60 ${confirmClass}`}
+          className={`w-full sm:w-auto min-h-[44px] rounded-xl px-4 py-2.5 text-sm font-medium shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60 touch-manipulation ${confirmClass}`}
           aria-label={confirmLabel}
         >
           {loading ? 'Please wait…' : confirmLabel}

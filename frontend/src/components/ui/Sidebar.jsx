@@ -105,7 +105,7 @@ export default function Sidebar({
         </button>
       </div>
 
-      <nav className="flex-1 space-y-6 overflow-y-auto p-3">
+      <nav className="flex-1 space-y-6 overflow-y-auto overflow-x-hidden p-3" style={{ WebkitOverflowScrolling: 'touch' }}>
         {sectionOrder.map((sectionKey) => {
           const items = bySection[sectionKey];
           if (!items?.length) return null;

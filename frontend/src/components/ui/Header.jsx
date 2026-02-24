@@ -60,7 +60,7 @@ export default function Header({
   const title = getPageTitle(pathname);
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200/80 bg-white/80 px-4 shadow-glass backdrop-blur-md sm:px-6">
+    <header className="sticky top-0 z-20 flex h-14 min-h-[44px] sm:h-16 items-center gap-2 sm:gap-3 border-b border-slate-200/80 bg-white/80 px-3 pt-[env(safe-area-inset-top,0)] shadow-glass backdrop-blur-md sm:px-6">
       <button
         type="button"
         onClick={onMenuClick}
@@ -77,7 +77,7 @@ export default function Header({
         <Logo compact className="py-0.5" />
       </Link>
 
-      <h1 className="min-w-0 flex-1 truncate text-h1 font-semibold text-content">{title}</h1>
+      <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-content sm:text-h1">{title}</h1>
 
       <div className="flex flex-1 items-center justify-end gap-3">
         {onSearchChange && (
@@ -114,14 +114,14 @@ export default function Header({
         </button>
 
         <HeadlessMenu as="div" className="relative">
-          <HeadlessMenu.Button className="flex items-center gap-2 rounded-xl py-1.5 pl-1 pr-2.5 text-body font-medium text-content transition-colors hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-sm font-semibold text-white shadow-soft">
+          <HeadlessMenu.Button className="flex min-h-[44px] min-w-[44px] items-center justify-center sm:justify-start gap-2 rounded-xl py-1.5 pl-1 pr-2.5 text-body font-medium text-content transition-colors hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 touch-manipulation">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-sm font-semibold text-white shadow-soft">
               {getInitials(user?.name)}
             </span>
             <span className="hidden max-w-[8rem] truncate sm:inline">{user?.name}</span>
-            <ChevronDown className="h-4 w-4 text-slate-400" />
+            <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 hidden sm:block" />
           </HeadlessMenu.Button>
-          <HeadlessMenu.Items className="absolute right-0 mt-2 w-56 origin-top-right rounded-2xl border border-slate-200 bg-white py-1 shadow-elevated focus:outline-none">
+          <HeadlessMenu.Items className="absolute right-0 mt-2 w-56 max-w-[calc(100vw-2rem)] origin-top-right rounded-2xl border border-slate-200 bg-white py-1 shadow-elevated focus:outline-none z-50">
             <div className="border-b border-slate-100 px-4 py-3">
               <p className="truncate font-medium text-content">{user?.name}</p>
               <p className="truncate text-caption text-content-muted">{user?.email}</p>

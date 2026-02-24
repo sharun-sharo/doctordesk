@@ -261,13 +261,13 @@ export default function Appointments() {
       {/* View toggle */}
       <div>
         <p className="mb-3 text-sm font-medium text-slate-600">View</p>
-        <div className="tabs-pill inline-flex" role="tablist" aria-label="View">
+        <div className="tabs-pill inline-flex w-full sm:w-auto flex sm:inline-flex" role="tablist" aria-label="View">
           <button
             type="button"
             role="tab"
             aria-selected={view === 'list'}
             onClick={() => setView('list')}
-            className={`tab-pill inline-flex items-center gap-2 min-h-[44px] px-5 ${view === 'list' ? 'tab-pill-active' : 'tab-pill-inactive'}`}
+            className={`tab-pill flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[44px] px-4 sm:px-5 touch-manipulation ${view === 'list' ? 'tab-pill-active' : 'tab-pill-inactive'}`}
           >
             <List className="h-4 w-4 shrink-0" /> List
           </button>
@@ -276,7 +276,7 @@ export default function Appointments() {
             role="tab"
             aria-selected={view === 'calendar'}
             onClick={() => setView('calendar')}
-            className={`tab-pill inline-flex items-center gap-2 min-h-[44px] px-5 ${view === 'calendar' ? 'tab-pill-active' : 'tab-pill-inactive'}`}
+            className={`tab-pill flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[44px] px-4 sm:px-5 touch-manipulation ${view === 'calendar' ? 'tab-pill-active' : 'tab-pill-inactive'}`}
           >
             <CalendarIcon className="h-4 w-4 shrink-0" /> Calendar
           </button>
@@ -284,11 +284,11 @@ export default function Appointments() {
       </div>
 
       {/* Filters card */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm">
         <p className="mb-4 text-sm font-medium text-slate-600">Filters</p>
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-5">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-end gap-4 sm:gap-x-6 sm:gap-y-5">
           {!isDoctorOrAdmin && (
-            <div className="w-full min-w-[160px] max-w-[200px]">
+            <div className="w-full sm:min-w-[160px] sm:max-w-[200px]">
               <label className="input-label block mb-1.5">Doctor</label>
               <select
                 value={filters.doctor_id || ''}
@@ -302,7 +302,7 @@ export default function Appointments() {
           )}
           <div className="w-full min-w-0 sm:min-w-[240px]">
             <label className="input-label block mb-1.5">Status</label>
-            <div className="flex flex-wrap gap-2 min-h-[44px] items-center">
+            <div className="flex flex-wrap gap-2 min-h-[44px] items-center touch-manipulation">
               {STATUS_OPTIONS.map((opt) => (
                 <button
                   key={opt.value || 'all'}
@@ -319,7 +319,7 @@ export default function Appointments() {
               ))}
             </div>
           </div>
-          <div className="w-full min-w-[160px] max-w-[180px]">
+          <div className="w-full sm:min-w-[160px] sm:max-w-[180px]">
             <DatePicker
               label="From"
               value={filters.date_from || ''}
@@ -327,7 +327,7 @@ export default function Appointments() {
               placeholder="Start date"
             />
           </div>
-          <div className="w-full min-w-[160px] max-w-[180px]">
+          <div className="w-full sm:min-w-[160px] sm:max-w-[180px]">
             <DatePicker
               label="To"
               value={filters.date_to || ''}
@@ -338,7 +338,7 @@ export default function Appointments() {
           <button
             type="button"
             onClick={applyFilters}
-            className="btn-primary min-h-[44px] px-5 ml-0 sm:ml-2"
+            className="btn-primary min-h-[44px] w-full sm:w-auto px-5"
           >
             Apply
           </button>
@@ -346,10 +346,10 @@ export default function Appointments() {
       </div>
 
       {view === 'calendar' ? (
-        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-800 leading-relaxed">Calendar</h2>
-            <div className="flex items-center gap-2">
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 sm:p-6 shadow-sm overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 min-w-0">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 leading-relaxed">Calendar</h2>
+            <div className="flex items-center justify-between sm:justify-end gap-2 flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { ...m, month: m.month - 1 }))}

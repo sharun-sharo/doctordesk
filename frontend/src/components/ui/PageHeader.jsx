@@ -6,7 +6,7 @@ export default function PageHeader({ title, description, children, className = '
   return (
     <div className={`flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 ${className}`}>
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">
           {title}
         </h1>
         {description && (

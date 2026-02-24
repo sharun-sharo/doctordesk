@@ -15,7 +15,7 @@ export default function Modal({ open, onClose, title, children, size = 'md' }) {
     md: 'max-w-lg',
     lg: 'max-w-2xl',
     xl: 'max-w-4xl',
-    full: 'max-w-[90vw]',
+    full: 'max-w-[min(90vw,calc(100vw-1.5rem))]',
   };
 
   return (
@@ -32,7 +32,7 @@ export default function Modal({ open, onClose, title, children, size = 'md' }) {
         >
           <div className="fixed inset-0 bg-slate-900/40" aria-hidden="true" />
         </Transition.Child>
-        <div className="fixed inset-0 flex items-center justify-center p-4">
+        <div className="fixed inset-0 flex items-center justify-center p-3 sm:p-4 overflow-y-auto" style={{ paddingLeft: 'max(0.75rem, env(safe-area-inset-left))', paddingRight: 'max(0.75rem, env(safe-area-inset-right))' }}>
           <Transition.Child
             as={Fragment}
             enter="ease-out duration-200"
@@ -43,9 +43,9 @@ export default function Modal({ open, onClose, title, children, size = 'md' }) {
             leaveTo="opacity-0 scale-95"
           >
             <Dialog.Panel
-              className={`w-full ${sizeClass[size]} rounded-xl border border-slate-100 bg-white shadow-lg`}
+              className={`w-full my-auto ${sizeClass[size]} rounded-xl border border-slate-100 bg-white shadow-lg max-h-[90vh] flex flex-col`}
             >
-              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center justify-between border-b border-slate-100 px-4 sm:px-6 py-3 sm:py-4 flex-shrink-0">
                 {title && (
                   <Dialog.Title className="text-h2 text-content">
                     {title}
@@ -60,7 +60,7 @@ export default function Modal({ open, onClose, title, children, size = 'md' }) {
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="max-h-[80vh] overflow-y-auto px-6 py-4">{children}</div>
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4" style={{ WebkitOverflowScrolling: 'touch' }}>{children}</div>
             </Dialog.Panel>
           </Transition.Child>
         </div>

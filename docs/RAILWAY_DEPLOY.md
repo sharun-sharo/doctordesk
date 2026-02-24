@@ -58,6 +58,22 @@ node scripts/seedDemoData.js
 
 Log in as `admin@doctordesk.com` / `Admin@123` to see the demo data.
 
+### Add Assistant doctor role (if you get “foreign key constraint fails” on Add User)
+
+If adding a user with role “Assistant doctor” fails in production, the `roles` table is missing id 5. From your machine, with the same Railway DB credentials (e.g. in `backend/.env` or inline):
+
+```bash
+cd backend
+node scripts/addAssistantDoctorRole.js
+```
+
+Or with inline env (replace with your Railway MySQL values):
+
+```bash
+cd backend
+DB_HOST=your_railway_mysql_host DB_PORT=3306 DB_USER=your_user DB_PASSWORD=your_password DB_NAME=your_db node scripts/addAssistantDoctorRole.js
+```
+
 ## 5. Redeploy backend
 
 After variables and schema are set, **Redeploy** the backend service. It should start without “Database connection failed”.

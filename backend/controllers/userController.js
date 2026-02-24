@@ -280,12 +280,20 @@ async function getProfile(req, res, next) {
 
 async function updateProfile(req, res, next) {
   try {
-    const { name, phone, whatsapp_phone } = req.body;
+    const { name, email, phone, whatsapp_phone } = req.body;
     const updates = [];
     const params = [];
     if (name !== undefined) {
       updates.push('name = ?');
       params.push(name);
+    }
+    if (email !== undefined) {
+      const [existing] = await pool.execute('SELECT id FROM users WHERE email = ? AND id != ? AND deleted_at IS NULL', [email, req.user.id]);
+      if (existing.length) {
+        return res.status(400).json({ success: false, message: 'Email already in use' });
+      }
+      updates.push('email = ?');
+      params.push(email);
     }
     if (phone !== undefined) {
       updates.push('phone = ?');
@@ -305,6 +313,25 @@ async function updateProfile(req, res, next) {
       [req.user.id]
     );
     res.json({ success: true, data: rows[0] || {} });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function changePassword(req, res, next) {
+  try {
+    const { current_password, new_password } = req.body;
+    const [rows] = await pool.execute('SELECT id, password FROM users WHERE id = ? AND deleted_at IS NULL', [req.user.id]);
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    const match = await bcrypt.compare(current_password, rows[0].password);
+    if (!match) {
+      return res.status(401).json({ success: false, message: 'Current password is incorrect' });
+    }
+    const hashed = await bcrypt.hash(new_password, 12);
+    await pool.execute('UPDATE users SET password = ? WHERE id = ?', [hashed, req.user.id]);
+    res.json({ success: true, message: 'Password updated' });
   } catch (err) {
     next(err);
   }
@@ -344,4 +371,4 @@ async function getDoctors(req, res, next) {
   }
 }
 
-module.exports = { list, getOne, create, update, remove, getProfile, updateProfile, getDoctors };
+module.exports = { list, getOne, create, update, remove, getProfile, updateProfile, changePassword, getDoctors };

@@ -31,8 +31,18 @@ const updateRules = [
 
 const profileUpdateRules = [
   body('name').optional().trim().notEmpty().isLength({ max: 255 }).withMessage('Name must be 1–255 characters'),
+  body('email').optional().isEmail().normalizeEmail().withMessage('Valid email required'),
   body('phone').optional().trim().isLength({ max: 20 }),
   body('whatsapp_phone').optional().trim().isLength({ max: 20 }).withMessage('WhatsApp number max 20 characters'),
 ];
 
-module.exports = { createRules, updateRules, profileUpdateRules };
+const changePasswordRules = [
+  body('current_password').notEmpty().withMessage('Current password is required'),
+  body('new_password')
+    .isLength({ min: 8 }).withMessage('Password at least 8 characters')
+    .matches(/\d/).withMessage('Password must contain a number')
+    .matches(/[A-Z]/).withMessage('Password must contain uppercase')
+    .matches(/[a-z]/).withMessage('Password must contain lowercase'),
+];
+
+module.exports = { createRules, updateRules, profileUpdateRules, changePasswordRules };

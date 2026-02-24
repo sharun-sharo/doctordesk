@@ -303,7 +303,6 @@ export default function AppointmentForm() {
       patient_id: parseInt(form.patient_id, 10),
       doctor_id: parseInt(form.doctor_id, 10),
     };
-    if (isDoctorOrAdmin) payload.doctor_id = undefined;
     setSaving(true);
     try {
       if (isEdit) {
@@ -317,7 +316,7 @@ export default function AppointmentForm() {
         toast.success('Appointment updated');
         setSaveSuccess(true);
       } else {
-        await api.post('/appointments', { ...payload, doctor_id: payload.doctor_id || undefined });
+        await api.post('/appointments', payload);
         toast.success('Appointment booked successfully');
         setSaveSuccess(true);
       }

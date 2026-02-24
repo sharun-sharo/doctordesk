@@ -21,6 +21,7 @@ router.get('/:id', prescriptionController.getOne);
 router.get('/:id/attachment', prescriptionController.getAttachment);
 router.get('/:id/attachments/:attachmentId', prescriptionController.getAttachment);
 router.delete('/:id/attachments/:attachmentId', prescriptionController.deleteAttachment);
+router.delete('/:id', prescriptionController.destroy);
 router.post('/', optionalAttachments, prescriptionController.create);
 router.put('/:id', optionalAttachments, prescriptionController.update);
 

@@ -280,28 +280,16 @@ async function getProfile(req, res, next) {
 
 async function updateProfile(req, res, next) {
   try {
-    const { name, email, phone, whatsapp_phone } = req.body;
+    const { name, phone } = req.body;
     const updates = [];
     const params = [];
     if (name !== undefined) {
       updates.push('name = ?');
       params.push(name);
     }
-    if (email !== undefined) {
-      const [existing] = await pool.execute('SELECT id FROM users WHERE email = ? AND id != ? AND deleted_at IS NULL', [email, req.user.id]);
-      if (existing.length) {
-        return res.status(400).json({ success: false, message: 'Email already in use' });
-      }
-      updates.push('email = ?');
-      params.push(email);
-    }
     if (phone !== undefined) {
       updates.push('phone = ?');
       params.push(phone === '' ? null : phone);
-    }
-    if (whatsapp_phone !== undefined) {
-      updates.push('whatsapp_phone = ?');
-      params.push(whatsapp_phone === '' ? null : whatsapp_phone);
     }
     if (updates.length === 0) {
       return res.status(400).json({ success: false, message: 'No fields to update' });
@@ -309,7 +297,7 @@ async function updateProfile(req, res, next) {
     params.push(req.user.id);
     await pool.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
     const [rows] = await pool.execute(
-      `SELECT id, email, name, phone, whatsapp_phone FROM users WHERE id = ?`,
+      `SELECT id, email, name, phone FROM users WHERE id = ?`,
       [req.user.id]
     );
     res.json({ success: true, data: rows[0] || {} });

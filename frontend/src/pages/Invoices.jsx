@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
-import { Plus, FileText, Download } from 'lucide-react';
+import { Plus, FileText, Download, Trash2 } from 'lucide-react';
 import DataTable from '../components/ui/DataTable';
 import { PageSkeleton } from '../components/ui/Skeleton';
 
@@ -44,6 +44,18 @@ export default function Invoices() {
         fetchInvoices(pagination.page);
       })
       .catch(() => toast.error('Failed to update'));
+  };
+
+  const handleDelete = (id, invoiceNumber) => {
+    if (!window.confirm(`Delete invoice ${invoiceNumber}?`)) return;
+    api
+      .delete(`/invoices/${id}`)
+      .then(() => {
+        toast.success('Invoice deleted');
+        setList((prev) => prev.filter((inv) => inv.id !== id));
+        setPagination((p) => ({ ...p, total: Math.max(0, (p.total || 1) - 1) }));
+      })
+      .catch((err) => toast.error(err.response?.data?.message || err.message || 'Delete failed'));
   };
 
   const handleDownload = async (id, invoiceNumber) => {
@@ -104,6 +116,14 @@ export default function Invoices() {
             className="inline-flex items-center gap-1 text-body text-slate-600 hover:text-primary-600"
           >
             <Download className="h-4 w-4" /> PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDelete(row.id, row.invoice_number)}
+            className="inline-flex items-center gap-1 text-body font-medium text-red-600 hover:underline focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 rounded"
+            aria-label={`Delete invoice ${row.invoice_number}`}
+          >
+            <Trash2 className="h-4 w-4" /> Delete
           </button>
         </div>
       ),

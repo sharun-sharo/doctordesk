@@ -43,7 +43,8 @@ async function list(req, res, next) {
       conditions.push('pr.doctor_id = ?');
       params.push(doctor_id);
     }
-    const where = conditions.length ? conditions.join(' AND ') : '1=1';
+    conditions.push('pr.deleted_at IS NULL');
+    const where = conditions.join(' AND ');
 
     const [rows] = await pool.execute(
       `SELECT pr.id, pr.patient_id, pr.doctor_id, pr.appointment_id, pr.diagnosis, pr.notes, pr.medicines, pr.created_at,
@@ -81,7 +82,7 @@ async function getOne(req, res, next) {
        FROM prescriptions pr
        LEFT JOIN patients p ON pr.patient_id = p.id
        LEFT JOIN users u ON pr.doctor_id = u.id
-       WHERE pr.id = ?`,
+       WHERE pr.id = ? AND pr.deleted_at IS NULL`,
       [req.params.id]
     );
     if (!rows.length) {
@@ -296,4 +297,25 @@ async function deleteAttachment(req, res, next) {
   }
 }
 
-module.exports = { list, getOne, getAttachment, create, update, deleteAttachment };
+async function destroy(req, res, next) {
+  try {
+    const { id } = req.params;
+    const [existing] = await pool.execute(
+      'SELECT id, doctor_id FROM prescriptions WHERE id = ? AND deleted_at IS NULL',
+      [id]
+    );
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: 'Prescription not found' });
+    }
+    if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) && existing[0].doctor_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not your prescription' });
+    }
+    await pool.execute('UPDATE prescriptions SET deleted_at = NOW() WHERE id = ?', [id]);
+    await logActivity({ userId: req.user.id, action: 'delete', entityType: 'prescription', entityId: id, req });
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, getOne, getAttachment, create, update, deleteAttachment, destroy };

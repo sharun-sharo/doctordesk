@@ -19,16 +19,15 @@ async function list(req, res, next) {
       conditions.push('i.payment_status = ?');
       params.push(payment_status);
     }
+    const join = (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN)
+      ? ' LEFT JOIN appointments a ON i.appointment_id = a.id'
+      : '';
     if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN)) {
-      conditions.push('a.doctor_id = ?');
+      conditions.push('(a.id IS NULL OR a.doctor_id = ?)');
       params.push(req.user.id);
     }
-    const join = (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN)
-      ? ' INNER JOIN appointments a ON i.appointment_id = a.id AND a.doctor_id = ?'
-      : '';
     const where = conditions.join(' AND ');
-    const baseParams = (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) ? [req.user.id] : [];
-    const allParams = [...baseParams, ...params];
+    const allParams = [...params];
 
     const [rows] = await pool.execute(
       `SELECT i.id, i.invoice_number, i.patient_id, i.total, i.payment_status, i.paid_amount, i.created_at,
@@ -224,4 +223,22 @@ async function downloadPdf(req, res, next) {
   }
 }
 
-module.exports = { list, getOne, create, updatePayment, downloadPdf };
+async function destroy(req, res, next) {
+  try {
+    const { id } = req.params;
+    const [existing] = await pool.execute(
+      'SELECT id FROM invoices WHERE id = ? AND deleted_at IS NULL',
+      [id]
+    );
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+    await pool.execute('UPDATE invoices SET deleted_at = NOW() WHERE id = ?', [id]);
+    await logActivity({ userId: req.user.id, action: 'delete', entityType: 'invoice', entityId: id, req });
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, getOne, create, updatePayment, downloadPdf, destroy };

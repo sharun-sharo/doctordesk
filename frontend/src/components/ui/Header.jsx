@@ -1,7 +1,9 @@
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, Search, Bell, ChevronDown, Plus } from 'lucide-react';
+import { Menu, Search, Bell, ChevronDown, Plus, Calendar } from 'lucide-react';
 import { Menu as HeadlessMenu } from '@headlessui/react';
 import Logo from './Logo';
+import api from '../../api/axios';
 
 const pageTitles = {
   '/': 'Dashboard',
@@ -50,6 +52,14 @@ function getInitials(name) {
     .slice(0, 2) || '?';
 }
 
+function formatTime(str) {
+  if (!str) return '—';
+  const [h, m] = String(str).split(':').map(Number);
+  const h12 = h % 12 || 12;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h12}:${String(m || 0).padStart(2, '0')} ${ampm}`;
+}
+
 export default function Header({
   onMenuClick,
   searchValue,
@@ -58,6 +68,32 @@ export default function Header({
 }) {
   const { pathname } = useLocation();
   const title = getPageTitle(pathname);
+  const [notificationAppointments, setNotificationAppointments] = useState([]);
+  const [notificationLoading, setNotificationLoading] = useState(false);
+
+  const fetchNotificationAppointments = () => {
+    setNotificationLoading(true);
+    const today = new Date().toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    api
+      .get('/appointments', { params: { date_from: today, date_to: tomorrow, limit: 15, page: 1 } })
+      .then(({ data }) => {
+        const list = data?.data?.appointments || [];
+        const sorted = [...list].sort((a, b) => {
+          const d = (x) => (x.appointment_date || '') + (x.start_time || '');
+          return d(a).localeCompare(d(b));
+        });
+        setNotificationAppointments(sorted);
+      })
+      .catch(() => setNotificationAppointments([]))
+      .finally(() => setNotificationLoading(false));
+  };
+
+  useEffect(() => {
+    fetchNotificationAppointments();
+    const interval = setInterval(fetchNotificationAppointments, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <header className="sticky top-0 z-20 flex h-14 min-h-[44px] sm:h-16 items-center gap-2 sm:gap-3 border-b border-slate-200/80 bg-white/80 px-3 pt-[env(safe-area-inset-top,0)] shadow-glass backdrop-blur-md sm:px-6">
@@ -104,14 +140,62 @@ export default function Header({
           <span className="lg:hidden">New</span>
         </Link>
 
-        <button
-          type="button"
-          className="relative rounded-xl p-2.5 text-content-muted transition-colors hover:bg-slate-100 hover:text-content focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5" />
-          <span className="absolute right-1.5 top-1.5 flex h-2 w-2 rounded-full bg-primary-500 ring-2 ring-white" aria-hidden />
-        </button>
+        <HeadlessMenu as="div" className="relative">
+          <HeadlessMenu.Button
+            type="button"
+            className="relative rounded-xl p-2.5 text-content-muted transition-colors hover:bg-slate-100 hover:text-content focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+            aria-label="Notifications"
+          >
+            <Bell className="h-5 w-5" />
+            {notificationAppointments.length > 0 && (
+              <span className="absolute right-1.5 top-1.5 flex h-2 w-2 rounded-full bg-primary-500 ring-2 ring-white" aria-hidden />
+            )}
+          </HeadlessMenu.Button>
+          <HeadlessMenu.Items className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-[min(70vh,420px)] overflow-auto origin-top-right rounded-2xl border border-slate-200 bg-white shadow-elevated focus:outline-none z-50">
+            <div className="sticky top-0 border-b border-slate-100 bg-white px-4 py-3 rounded-t-2xl">
+              <h3 className="font-semibold text-content flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-primary-600" />
+                Appointments
+              </h3>
+              <p className="text-xs text-content-muted mt-0.5">Today &amp; tomorrow</p>
+            </div>
+            <div className="py-1">
+              {notificationLoading ? (
+                <div className="px-4 py-6 text-center text-sm text-content-muted">Loading…</div>
+              ) : notificationAppointments.length === 0 ? (
+                <div className="px-4 py-6 text-center text-sm text-content-muted">No upcoming appointments</div>
+              ) : (
+                notificationAppointments.map((a) => (
+                  <HeadlessMenu.Item key={a.id}>
+                    {({ active }) => (
+                      <Link
+                        to={`/appointments/${a.id}/edit`}
+                        className={`flex flex-col gap-0.5 px-4 py-3 border-b border-slate-50 last:border-0 ${active ? 'bg-slate-50' : ''}`}
+                      >
+                        <span className="font-medium text-content truncate">{a.patient_name}</span>
+                        <span className="text-xs text-content-muted">
+                          {a.appointment_date} · {formatTime(a.start_time)}
+                          {a.doctor_name ? ` · ${a.doctor_name}` : ''}
+                        </span>
+                        {a.status && (
+                          <span className="text-xs text-primary-600 capitalize">{a.status.replace('_', ' ')}</span>
+                        )}
+                      </Link>
+                    )}
+                  </HeadlessMenu.Item>
+                ))
+              )}
+            </div>
+            <div className="sticky bottom-0 border-t border-slate-100 bg-slate-50/80 px-4 py-2 rounded-b-2xl">
+              <Link
+                to="/appointments"
+                className="block text-center text-sm font-medium text-primary-600 hover:text-primary-700 py-1.5"
+              >
+                View all appointments
+              </Link>
+            </div>
+          </HeadlessMenu.Items>
+        </HeadlessMenu>
 
         <HeadlessMenu as="div" className="relative">
           <HeadlessMenu.Button className="flex min-h-[44px] min-w-[44px] items-center justify-center sm:justify-start gap-2 rounded-xl py-1.5 pl-1 pr-2.5 text-body font-medium text-content transition-colors hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 touch-manipulation">

@@ -31,9 +31,7 @@ const updateRules = [
 
 const profileUpdateRules = [
   body('name').optional().trim().notEmpty().isLength({ max: 255 }).withMessage('Name must be 1–255 characters'),
-  body('email').optional().isEmail().normalizeEmail().withMessage('Valid email required'),
-  body('phone').optional().trim().isLength({ max: 20 }),
-  body('whatsapp_phone').optional().trim().isLength({ max: 20 }).withMessage('WhatsApp number max 20 characters'),
+  body('phone').optional().trim().isLength({ max: 20 }).withMessage('Mobile number max 20 characters'),
 ];
 
 const changePasswordRules = [

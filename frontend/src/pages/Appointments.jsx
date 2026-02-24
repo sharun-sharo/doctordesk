@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
-import { Plus, Calendar as CalendarIcon, List, Pencil, MessageCircle } from 'lucide-react';
+import { Plus, Calendar as CalendarIcon, List, Pencil, MessageCircle, Trash2 } from 'lucide-react';
 import DataTable from '../components/ui/DataTable';
 import { formatTime12h } from '../lib/format';
 import Modal from '../components/ui/Modal';
@@ -112,6 +112,18 @@ export default function Appointments() {
     if (!isDoctorOrAdmin) api.get('/users/doctors').then(({ data }) => setDoctors(data.data || []));
   }, [isDoctorOrAdmin]);
 
+  const handleDelete = (id, patientName) => {
+    if (!window.confirm(`Delete this appointment${patientName ? ` with ${patientName}` : ''}? This cannot be undone.`)) return;
+    api
+      .delete(`/appointments/${id}`)
+      .then(() => {
+        toast.success('Appointment deleted');
+        setList((prev) => prev.filter((a) => a.id !== id));
+        setPagination((p) => ({ ...p, total: Math.max(0, (p.total || 1) - 1) }));
+      })
+      .catch((err) => toast.error(err.response?.data?.message || err.message || 'Delete failed'));
+  };
+
   const handleCancel = (id) => {
     api.put(`/appointments/${id}`, { status: 'cancelled' }).then(() => {
       toast.success('Appointment cancelled');
@@ -200,6 +212,15 @@ export default function Appointments() {
           >
             <Pencil className="h-4 w-4" />
           </Link>
+          <button
+            type="button"
+            onClick={() => handleDelete(row.id, row.patient_name)}
+            className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+            aria-label="Delete appointment"
+            title="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
           {row.status === 'scheduled' && (
             <>
               <span className="h-4 w-px bg-slate-200" aria-hidden />

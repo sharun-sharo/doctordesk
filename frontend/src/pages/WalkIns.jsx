@@ -36,7 +36,7 @@ export default function WalkIns() {
   const patientRef = useRef(null);
 
   const today = new Date().toISOString().slice(0, 10);
-  const doctorIdForSubmit = isDoctorOrAdmin ? user?.id : form.doctor_id;
+  const doctorIdForSubmit = isDoctor ? user?.id : form.doctor_id;
 
   useEffect(() => {
     api.get('/patients', { params: { limit: 500 } }).then(({ data }) => setPatients(data.data.patients || [])).catch(() => setPatients([]));
@@ -166,7 +166,7 @@ export default function WalkIns() {
       toast.error('Select or add a patient');
       return;
     }
-    if (!doctorIdForSubmit && isReceptionistOrAssistant) {
+    if (!doctorIdForSubmit && !isDoctor) {
       toast.error('Select a doctor.');
       return;
     }
@@ -183,7 +183,7 @@ export default function WalkIns() {
         notes: 'Walk-in',
       });
       toast.success('Walk-in registered');
-      setForm((f) => ({ patient_id: '', doctor_id: isDoctorOrAdmin ? user?.id : f.doctor_id }));
+      setForm((f) => ({ patient_id: '', doctor_id: isDoctor ? user?.id : f.doctor_id }));
       setPatientSearch('');
       const { data: listData } = await api.get('/appointments', {
         params: { date_from: today, date_to: today, limit: 50, page: 1 },
@@ -288,7 +288,7 @@ export default function WalkIns() {
                 </div>
               )}
             </div>
-            {!isDoctorOrAdmin && (
+            {!isDoctor && (
               <div>
                 <label htmlFor="walkin-doctor" className="input-label block mb-1">
                   Doctor <span className="text-red-500">*</span>

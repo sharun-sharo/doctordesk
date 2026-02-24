@@ -9,7 +9,7 @@ const createRules = [
     .matches(/[a-z]/).withMessage('Password must contain lowercase'),
   body('name').trim().notEmpty().isLength({ max: 255 }),
   body('phone').optional().trim(),
-  body('role_id').isIn([ROLES.ADMIN, ROLES.RECEPTIONIST]).withMessage('Invalid role (Admin or Reception only)'),
+  body('role_id').isIn([ROLES.ADMIN, ROLES.RECEPTIONIST, ROLES.ASSISTANT_DOCTOR]).withMessage('Invalid role (Admin, Reception, or Assistant doctor only)'),
 ];
 
 const updateRules = [

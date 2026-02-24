@@ -2,10 +2,11 @@ const { body, param } = require('express-validator');
 
 const createRules = [
   body('patient_id').isInt({ min: 1 }),
-  body('doctor_id').isInt({ min: 1 }),
-  body('appointment_date').isDate(),
+  body('doctor_id').optional().isInt({ min: 1 }).withMessage('Doctor ID must be a positive integer'),
+  body('appointment_date').isDate().withMessage('Invalid date'),
   body('start_time').matches(/^\d{2}:\d{2}(:\d{2})?$/).withMessage('Time format HH:mm or HH:mm:ss'),
   body('end_time').optional().matches(/^\d{2}:\d{2}(:\d{2})?$/),
+  body('status').optional().isIn(['scheduled', 'completed', 'cancelled', 'no_show']),
   body('notes').optional().trim(),
 ];
 

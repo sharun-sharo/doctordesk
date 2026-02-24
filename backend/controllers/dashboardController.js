@@ -60,8 +60,8 @@ async function getStats(req, res, next) {
         [ROLES.ADMIN, ROLES.DOCTOR]
       );
       const [[receptionistsRow]] = await pool.execute(
-        'SELECT COUNT(*) AS total FROM users WHERE deleted_at IS NULL AND role_id = ?',
-        [ROLES.RECEPTIONIST]
+        'SELECT COUNT(*) AS total FROM users WHERE deleted_at IS NULL AND role_id IN (?, ?)',
+        [ROLES.RECEPTIONIST, ROLES.ASSISTANT_DOCTOR]
       );
       data.totalDoctors = doctorsRow.total;
       data.totalReceptionists = receptionistsRow.total;

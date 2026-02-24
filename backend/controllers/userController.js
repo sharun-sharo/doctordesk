@@ -14,7 +14,7 @@ async function list(req, res, next) {
 
     if (role_id) {
       const rid = parseInt(role_id, 10);
-      if ([ROLES.ADMIN, ROLES.DOCTOR, ROLES.RECEPTIONIST].includes(rid)) {
+      if ([ROLES.ADMIN, ROLES.DOCTOR, ROLES.RECEPTIONIST, ROLES.ASSISTANT_DOCTOR].includes(rid)) {
         where += ' AND u.role_id = ?';
         params.push(rid);
       }
@@ -36,17 +36,17 @@ async function list(req, res, next) {
       params
     );
 
-    const receptionistIds = (rows || []).filter((r) => r.role_id === ROLES.RECEPTIONIST).map((r) => r.id);
+    const staffWithDoctorsIds = (rows || []).filter((r) => r.role_id === ROLES.RECEPTIONIST || r.role_id === ROLES.ASSISTANT_DOCTOR).map((r) => r.id);
     let assignmentMap = {};
-    if (receptionistIds.length > 0) {
-      const placeholders = receptionistIds.map(() => '?').join(',');
+    if (staffWithDoctorsIds.length > 0) {
+      const placeholders = staffWithDoctorsIds.map(() => '?').join(',');
       const [assignments] = await pool.execute(
         `SELECT rd.receptionist_id, rd.doctor_id, d.name AS doctor_name
          FROM receptionist_doctors rd
          JOIN users d ON rd.doctor_id = d.id AND d.deleted_at IS NULL
          WHERE rd.receptionist_id IN (${placeholders})
          ORDER BY rd.receptionist_id, d.name`,
-        receptionistIds
+        staffWithDoctorsIds
       );
       for (const row of assignments || []) {
         if (!assignmentMap[row.receptionist_id]) {
@@ -58,7 +58,7 @@ async function list(req, res, next) {
     }
     const usersWithAssignments = (rows || []).map((u) => {
       const out = { ...u };
-      if (u.role_id === ROLES.RECEPTIONIST && assignmentMap[u.id]) {
+      if ((u.role_id === ROLES.RECEPTIONIST || u.role_id === ROLES.ASSISTANT_DOCTOR) && assignmentMap[u.id]) {
         out.assigned_doctor_ids = assignmentMap[u.id].ids;
         out.assigned_doctor_names = assignmentMap[u.id].names.join(', ');
       }
@@ -91,7 +91,7 @@ async function getOne(req, res, next) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     const data = { ...rows[0] };
-    if (data.role_id === ROLES.RECEPTIONIST) {
+    if (data.role_id === ROLES.RECEPTIONIST || data.role_id === ROLES.ASSISTANT_DOCTOR) {
       const [assignments] = await pool.execute(
         'SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ? ORDER BY doctor_id',
         [req.params.id]
@@ -178,8 +178,8 @@ async function update(req, res, next) {
       updates.push('password = ?');
       params.push(await bcrypt.hash(password, 12));
     }
-    // Super Admin can assign receptionist to one or more doctors
-    if (user.role_id === ROLES.RECEPTIONIST && req.user.roleId === ROLES.SUPER_ADMIN) {
+    // Super Admin can assign receptionist/assistant doctor to one or more doctors
+    if ((user.role_id === ROLES.RECEPTIONIST || user.role_id === ROLES.ASSISTANT_DOCTOR) && req.user.roleId === ROLES.SUPER_ADMIN) {
       if (Array.isArray(assigned_doctor_ids)) {
         await pool.execute('DELETE FROM receptionist_doctors WHERE receptionist_id = ?', [id]);
         const ids = assigned_doctor_ids.filter((v) => Number.isInteger(Number(v)) && Number(v) >= 1);
@@ -212,7 +212,7 @@ async function update(req, res, next) {
       [id]
     );
     const data = rows[0] ? { ...rows[0] } : null;
-    if (data && data.role_id === ROLES.RECEPTIONIST) {
+    if (data && (data.role_id === ROLES.RECEPTIONIST || data.role_id === ROLES.ASSISTANT_DOCTOR)) {
       const [assignments] = await pool.execute(
         'SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ? ORDER BY doctor_id',
         [id]
@@ -331,15 +331,22 @@ async function getDoctors(req, res, next) {
     const userId = req.user.id;
     const assignedAdminId = req.user.assignedAdminId;
 
-    // Reception: all doctors they are assigned to (from receptionist_doctors)
-    if (roleId === ROLES.RECEPTIONIST) {
-      const [rows] = await pool.execute(
+    // Reception / Assistant doctor: assigned doctors (from receptionist_doctors) + all Assistant doctors (for appointment "doctor" list)
+    if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
+      const [assigned] = await pool.execute(
         `SELECT u.id, u.name, u.email, u.phone FROM users u
          INNER JOIN receptionist_doctors rd ON rd.doctor_id = u.id
-         WHERE rd.receptionist_id = ? AND u.deleted_at IS NULL AND u.is_active = 1 ORDER BY u.name`,
+         WHERE rd.receptionist_id = ? AND u.deleted_at IS NULL AND u.is_active = 1`,
         [userId]
       );
-      return res.json({ success: true, data: rows || [] });
+      const [assistants] = await pool.execute(
+        `SELECT id, name, email, phone FROM users WHERE role_id = ? AND deleted_at IS NULL AND is_active = 1`,
+        [ROLES.ASSISTANT_DOCTOR]
+      );
+      const byId = new Map((assigned || []).map((r) => [r.id, r]));
+      (assistants || []).forEach((a) => { if (!byId.has(a.id)) byId.set(a.id, a); });
+      const merged = Array.from(byId.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      return res.json({ success: true, data: merged });
     }
     if (roleId === ROLES.ADMIN || roleId === ROLES.DOCTOR) {
       const [rows] = await pool.execute(
@@ -348,10 +355,10 @@ async function getDoctors(req, res, next) {
       );
       return res.json({ success: true, data: rows });
     }
-    // Super Admin: all users who can be doctors (Admin and Doctor roles)
+    // Super Admin: all users who can be selected as "doctor" for appointments (Admin, Doctor, Assistant doctor)
     const [rows] = await pool.execute(
-      `SELECT id, name, email, phone FROM users WHERE role_id IN (?, ?) AND deleted_at IS NULL AND is_active = 1 ORDER BY name`,
-      [ROLES.ADMIN, ROLES.DOCTOR]
+      `SELECT id, name, email, phone FROM users WHERE role_id IN (?, ?, ?) AND deleted_at IS NULL AND is_active = 1 ORDER BY name`,
+      [ROLES.ADMIN, ROLES.DOCTOR, ROLES.ASSISTANT_DOCTOR]
     );
     res.json({ success: true, data: rows });
   } catch (err) {
@@ -359,4 +366,69 @@ async function getDoctors(req, res, next) {
   }
 }
 
-module.exports = { list, getOne, create, update, remove, getProfile, updateProfile, changePassword, getDoctors };
+/** Returns doctors with receptionist names for each (for Walk-ins dropdown). */
+async function getDoctorsWithReceptionists(req, res, next) {
+  try {
+    const roleId = req.user.roleId;
+    const userId = req.user.id;
+
+    if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
+      const [rows] = await pool.execute(
+        `SELECT d.id, d.name, d.email, d.phone,
+                GROUP_CONCAT(DISTINCT r.name ORDER BY r.name SEPARATOR ', ') AS receptionist_names
+         FROM users d
+         INNER JOIN receptionist_doctors rd ON rd.doctor_id = d.id
+         LEFT JOIN users r ON rd.receptionist_id = r.id AND r.deleted_at IS NULL
+         WHERE rd.receptionist_id = ? AND d.deleted_at IS NULL AND d.is_active = 1
+         GROUP BY d.id, d.name, d.email, d.phone ORDER BY d.name`,
+        [userId]
+      );
+      const data = (rows || []).map((r) => ({
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        phone: r.phone,
+        receptionistNames: r.receptionist_names ? r.receptionist_names.split(', ') : [],
+      }));
+      return res.json({ success: true, data });
+    }
+    if (roleId === ROLES.DOCTOR) {
+      const [docRows] = await pool.execute(
+        `SELECT id, name, email, phone FROM users WHERE id = ? AND deleted_at IS NULL AND is_active = 1`,
+        [userId]
+      );
+      const [recRows] = await pool.execute(
+        `SELECT r.name FROM receptionist_doctors rd
+         JOIN users r ON rd.receptionist_id = r.id AND r.deleted_at IS NULL
+         WHERE rd.doctor_id = ? ORDER BY r.name`,
+        [userId]
+      );
+      const receptionistNames = (recRows || []).map((r) => r.name);
+      const data = (docRows || []).map((d) => ({ ...d, receptionistNames }));
+      return res.json({ success: true, data });
+    }
+    // Admin and Super Admin: all doctors with their receptionists (so Walk-ins can show all 3+ with checkboxes)
+    const [rows] = await pool.execute(
+      `SELECT d.id, d.name, d.email, d.phone,
+              GROUP_CONCAT(DISTINCT r.name ORDER BY r.name SEPARATOR ', ') AS receptionist_names
+       FROM users d
+       LEFT JOIN receptionist_doctors rd ON rd.doctor_id = d.id
+       LEFT JOIN users r ON rd.receptionist_id = r.id AND r.deleted_at IS NULL
+       WHERE d.role_id IN (?, ?) AND d.deleted_at IS NULL AND d.is_active = 1
+       GROUP BY d.id, d.name, d.email, d.phone ORDER BY d.name`,
+      [ROLES.ADMIN, ROLES.DOCTOR]
+    );
+    const data = (rows || []).map((r) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      phone: r.phone,
+      receptionistNames: r.receptionist_names ? r.receptionist_names.split(', ').filter(Boolean) : [],
+    }));
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, getOne, create, update, remove, getProfile, updateProfile, changePassword, getDoctors, getDoctorsWithReceptionists };

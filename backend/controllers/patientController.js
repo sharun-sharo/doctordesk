@@ -6,9 +6,21 @@ function buildPatientWhere(query, roleId, userId) {
   const conditions = ['p.deleted_at IS NULL'];
   const params = [];
   if (query.search && query.search.trim()) {
-    conditions.push('(p.name LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)');
-    const term = `%${query.search.trim()}%`;
-    params.push(term, term, term);
+    const term = query.search.trim();
+    const likeTerm = `%${term}%`;
+    let idMatch = null;
+    if (/^\d+$/.test(term)) {
+      idMatch = parseInt(term, 10);
+    } else if (/^PAT-?\d+$/i.test(term)) {
+      idMatch = parseInt(term.replace(/^PAT-?/i, ''), 10);
+    }
+    if (idMatch != null && !Number.isNaN(idMatch)) {
+      conditions.push('(p.name LIKE ? OR p.phone LIKE ? OR p.email LIKE ? OR p.id = ?)');
+      params.push(likeTerm, likeTerm, likeTerm, idMatch);
+    } else {
+      conditions.push('(p.name LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)');
+      params.push(likeTerm, likeTerm, likeTerm);
+    }
   }
   if (query.gender) {
     conditions.push('p.gender = ?');

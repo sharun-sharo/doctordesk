@@ -14,12 +14,12 @@ async function list(req, res, next) {
     if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
       conditions.push('a.doctor_id = ?');
       params.push(req.user.id);
-    } else if (req.user.roleId === ROLES.RECEPTIONIST && req.user.assignedAdminId && doctor_id) {
-      // Receptionist: only filter by doctor when explicitly requested (e.g. dropdown)
+    } else if ((req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) && req.user.assignedAdminId && doctor_id) {
+      // Receptionist/Assistant doctor: only filter by doctor when explicitly requested (e.g. dropdown)
       conditions.push('a.doctor_id = ?');
       params.push(doctor_id);
-    } else if (req.user.roleId === ROLES.RECEPTIONIST) {
-      // Receptionist sees all clinic appointments (all doctors)
+    } else if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
+      // Receptionist/Assistant doctor sees all clinic appointments (all doctors)
     } else if (doctor_id) {
       conditions.push('a.doctor_id = ?');
       params.push(doctor_id);
@@ -134,28 +134,43 @@ function timeToMinutes(t) {
 
 async function create(req, res, next) {
   try {
-    let { patient_id, doctor_id, appointment_date, start_time, end_time, notes } = req.body;
-    if (req.user.roleId === ROLES.RECEPTIONIST && req.user.assignedAdminId) {
-      doctor_id = req.user.assignedAdminId;
+    let { patient_id, doctor_id, appointment_date, start_time, end_time, status, notes } = req.body;
+    status = status && ['scheduled', 'completed', 'cancelled', 'no_show'].includes(status) ? status : 'scheduled';
+    if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
+      if (doctor_id) {
+        const [allowed] = await pool.execute(
+          'SELECT 1 FROM receptionist_doctors WHERE receptionist_id = ? AND doctor_id = ?',
+          [req.user.id, doctor_id]
+        );
+        const [isAssistant] = await pool.execute(
+          'SELECT 1 FROM users WHERE id = ? AND role_id = ? AND deleted_at IS NULL',
+          [doctor_id, ROLES.ASSISTANT_DOCTOR]
+        );
+        if (!allowed.length && !isAssistant.length) doctor_id = null;
+      }
+      if (!doctor_id && req.user.assignedAdminId) doctor_id = req.user.assignedAdminId;
     }
     if (req.user.roleId === ROLES.ADMIN || req.user.roleId === ROLES.DOCTOR) {
       doctor_id = req.user.id;
     }
-    const [conflict] = await pool.execute(
-      `SELECT id FROM appointments WHERE doctor_id = ? AND appointment_date = ? AND deleted_at IS NULL
-       AND status IN ('scheduled','completed') AND (
-         (start_time <= ? AND (end_time IS NULL OR end_time > ?))
-         OR (start_time < ? AND (end_time IS NULL OR end_time > ?))
-       )`,
-      [doctor_id, appointment_date, start_time, start_time, end_time || start_time, start_time]
-    );
-    if (conflict.length) {
-      return res.status(400).json({ success: false, message: 'Time slot already booked' });
+    // Only check slot conflict for scheduled appointments (allow multiple completed e.g. walk-ins)
+    if (status === 'scheduled') {
+      const [conflict] = await pool.execute(
+        `SELECT id FROM appointments WHERE doctor_id = ? AND appointment_date = ? AND deleted_at IS NULL
+         AND status = 'scheduled' AND (
+           (start_time <= ? AND (end_time IS NULL OR end_time > ?))
+           OR (start_time < ? AND (end_time IS NULL OR end_time > ?))
+         )`,
+        [doctor_id, appointment_date, start_time, start_time, end_time || start_time, start_time]
+      );
+      if (conflict.length) {
+        return res.status(400).json({ success: false, message: 'Time slot already booked' });
+      }
     }
     const [result] = await pool.execute(
-      `INSERT INTO appointments (patient_id, doctor_id, appointment_date, start_time, end_time, notes, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [patient_id, doctor_id, appointment_date, start_time, end_time || null, notes || null, req.user.id]
+      `INSERT INTO appointments (patient_id, doctor_id, appointment_date, start_time, end_time, status, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [patient_id, doctor_id, appointment_date, start_time, end_time || null, status, notes || null, req.user.id]
     );
     const [rows] = await pool.execute(
       `SELECT a.id, a.patient_id, a.doctor_id, a.appointment_date, a.start_time, a.status,
@@ -218,7 +233,7 @@ async function update(req, res, next) {
     if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) && existing[0].doctor_id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Not your appointment' });
     }
-    if (req.user.roleId === ROLES.RECEPTIONIST && req.user.assignedAdminId && existing[0].doctor_id !== req.user.assignedAdminId) {
+    if ((req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) && req.user.assignedAdminId && existing[0].doctor_id !== req.user.assignedAdminId) {
       return res.status(403).json({ success: false, message: 'Not your appointment' });
     }
     const { appointment_date, start_time, end_time, status, notes } = req.body;
@@ -274,7 +289,7 @@ async function remove(req, res, next) {
     if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) && existing[0].doctor_id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Not your appointment' });
     }
-    if (req.user.roleId === ROLES.RECEPTIONIST && req.user.assignedAdminId && existing[0].doctor_id !== req.user.assignedAdminId) {
+    if ((req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) && req.user.assignedAdminId && existing[0].doctor_id !== req.user.assignedAdminId) {
       return res.status(403).json({ success: false, message: 'Not your appointment' });
     }
     await pool.execute('UPDATE appointments SET deleted_at = NOW(), status = ? WHERE id = ?', ['cancelled', id]);

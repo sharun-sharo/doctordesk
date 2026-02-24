@@ -242,8 +242,8 @@ async function superAdminReport(req, res, next) {
       [ROLES.ADMIN, ROLES.DOCTOR]
     );
     const [[receptionistsRow]] = await pool.execute(
-      'SELECT COUNT(*) AS total FROM users WHERE deleted_at IS NULL AND role_id = ?',
-      [ROLES.RECEPTIONIST]
+      'SELECT COUNT(*) AS total FROM users WHERE deleted_at IS NULL AND role_id IN (?, ?)',
+      [ROLES.RECEPTIONIST, ROLES.ASSISTANT_DOCTOR]
     );
 
     const dateJoin = isAllTime ? '' : ' AND a.appointment_date >= ? AND a.appointment_date <= ?';
@@ -298,7 +298,7 @@ async function appointmentsExportPdf(req, res, next) {
     if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
       conditions.push('a.doctor_id = ?');
       params.push(req.user.id);
-    } else if (req.user.roleId === ROLES.RECEPTIONIST && req.user.assignedAdminId && req.query.doctor_id) {
+    } else if ((req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) && req.user.assignedAdminId && req.query.doctor_id) {
       conditions.push('a.doctor_id = ?');
       params.push(req.query.doctor_id);
     }
@@ -920,9 +920,9 @@ async function superAdminRevenue(req, res, next) {
     const [recepRows] = await pool.execute(
       `SELECT id, name, email, phone, created_at
        FROM users
-       WHERE role_id = ? AND deleted_at IS NULL
+       WHERE role_id IN (?, ?) AND deleted_at IS NULL
        ORDER BY name`,
-      [ROLES.RECEPTIONIST]
+      [ROLES.RECEPTIONIST, ROLES.ASSISTANT_DOCTOR]
     );
     const receptionists = recepRows.map((r) => ({
       id: r.id,
@@ -986,8 +986,8 @@ async function superAdminRevenuePdf(req, res, next) {
       [ROLES.ADMIN, ROLES.DOCTOR]
     );
     const [recepRows] = await pool.execute(
-      `SELECT name, email, phone, created_at FROM users WHERE role_id = ? AND deleted_at IS NULL ORDER BY name`,
-      [ROLES.RECEPTIONIST]
+      `SELECT name, email, phone, created_at FROM users WHERE role_id IN (?, ?) AND deleted_at IS NULL ORDER BY name`,
+      [ROLES.RECEPTIONIST, ROLES.ASSISTANT_DOCTOR]
     );
 
     const doc = new PDFDocument({ margin: 50 });

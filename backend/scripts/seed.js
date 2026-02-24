@@ -33,6 +33,12 @@ const USERS = [
     name: 'Clinic',
     role_id: ROLES.DOCTOR,
   },
+  {
+    email: 'doctor2@doctordesk.com',
+    password: 'Doctor@123',
+    name: 'Dr. Smith',
+    role_id: ROLES.DOCTOR,
+  },
 ];
 
 async function seed() {
@@ -66,7 +72,7 @@ async function seed() {
   console.log('  Super Admin:  admin@clinic.com / SuperAdmin@123');
   console.log('  Admin:        admin@doctordesk.com / Admin@123');
   console.log('  Receptionist: reception@doctordesk.com / Receptionist@123');
-  console.log('  Doctor:       doctor@doctordesk.com / Doctor@123');
+  console.log('  Doctors:      doctor@doctordesk.com, doctor2@doctordesk.com / Doctor@123');
   console.log('\nChange passwords after first login.');
   process.exit(0);
 }

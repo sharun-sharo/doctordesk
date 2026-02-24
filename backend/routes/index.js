@@ -10,6 +10,7 @@ const medicineRoutes = require('./medicineRoutes');
 const reportRoutes = require('./reportRoutes');
 const activityRoutes = require('./activityRoutes');
 const subscriptionRoutes = require('./subscriptionRoutes');
+const settingsRoutes = require('./settingsRoutes');
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use('/medicines', medicineRoutes);
 router.use('/reports', reportRoutes);
 router.use('/activity', activityRoutes);
 router.use('/subscriptions', subscriptionRoutes);
+router.use('/settings', settingsRoutes);
 
 module.exports = router;

@@ -10,6 +10,7 @@ const router = express.Router({ mergeParams: true });
 router.use(authenticate);
 
 router.get('/doctors', userController.getDoctors);
+router.get('/doctors-with-receptionists', userController.getDoctorsWithReceptionists);
 router.get('/me', userController.getProfile);
 router.patch('/me', profileUpdateRules, validate, userController.updateProfile);
 router.post('/me/change-password', changePasswordRules, validate, userController.changePassword);

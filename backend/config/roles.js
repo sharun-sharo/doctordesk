@@ -7,6 +7,7 @@ const ROLES = {
   ADMIN: 2,
   DOCTOR: 3,
   RECEPTIONIST: 4,
+  ASSISTANT_DOCTOR: 5,
 };
 
 const ROLE_NAMES = {
@@ -14,14 +15,16 @@ const ROLE_NAMES = {
   [ROLES.ADMIN]: 'admin',
   [ROLES.DOCTOR]: 'doctor',
   [ROLES.RECEPTIONIST]: 'receptionist',
+  [ROLES.ASSISTANT_DOCTOR]: 'assistant_doctor',
 };
 
-// Who can create which roles. Super Admin creates Admin and Reception only (3 roles: super_admin, admin, reception).
+// Who can create which roles. Super Admin creates Admin, Receptionist, and Assistant doctor.
 const CAN_CREATE_ROLES = {
-  [ROLES.SUPER_ADMIN]: [ROLES.ADMIN, ROLES.RECEPTIONIST],
+  [ROLES.SUPER_ADMIN]: [ROLES.ADMIN, ROLES.RECEPTIONIST, ROLES.ASSISTANT_DOCTOR],
   [ROLES.ADMIN]: [],
   [ROLES.DOCTOR]: [],
   [ROLES.RECEPTIONIST]: [],
+  [ROLES.ASSISTANT_DOCTOR]: [],
 };
 
 module.exports = { ROLES, ROLE_NAMES, CAN_CREATE_ROLES };

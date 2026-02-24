@@ -65,13 +65,13 @@ const SECURITY_ITEMS = [
 ];
 
 const TESTIMONIALS = [
-  { name: 'Dr. Priya Sharma', clinic: 'City Care Clinic', quote: 'Finally, one system for the whole clinic. We stopped losing appointments and our front desk actually enjoys coming to work.', initials: 'PS' },
+  { name: 'Dr. Priya Sharma', clinic: 'City Care Clinic', quote: 'Finally, one system for the whole clinic. We stopped missing appointments and our front desk actually enjoys coming to work.', initials: 'PS' },
   { name: 'Raj Mehta', clinic: 'Family Health Centre', quote: 'Billing used to take hours. Now we see everything in one place and get paid faster.', initials: 'RM' },
   { name: 'Dr. Anil Kumar', clinic: 'Metro Polyclinic', quote: 'Prescriptions and patient history in one click. My consultations are smoother and patients notice.', initials: 'AK' },
 ];
 
 const HERO_TRUST = {
-  quote: 'One place for patients and billing. We stopped losing appointments.',
+  quote: 'One place for patients and billing. We stopped missing appointments.',
   name: 'Dr. Priya Sharma',
   clinic: 'City Care Clinic',
   stars: 5,

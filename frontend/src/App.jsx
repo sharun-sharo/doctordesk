@@ -1,5 +1,45 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
+
+const PAGE_TITLES = {
+  '/': 'Dashboard',
+  '/login': 'Sign in',
+  '/forgot-password': 'Reset password',
+  '/reset-password': 'Set new password',
+  '/doctors': 'Doctors',
+  '/receptionists': 'Receptionists',
+  '/patients': 'Patients',
+  '/patients/new': 'Add Patient',
+  '/appointments': 'Appointments',
+  '/appointments/new': 'New Appointment',
+  '/invoices': 'Billing',
+  '/invoices/new': 'New Invoice',
+  '/prescriptions': 'Prescriptions',
+  '/prescriptions/new': 'New Prescription',
+  '/medicines': 'Inventory',
+  '/medicines/new': 'Add Medicine',
+  '/reports': 'AI Insights',
+  '/reports/detailed': 'Reports',
+  '/revenue': 'Revenue',
+  '/users': 'Users',
+  '/users/new': 'Add User',
+  '/activity/logs': 'Activity Logs',
+  '/activity/login-history': 'Login History',
+  '/profile': 'Profile',
+  '/settings': 'Settings',
+};
+
+function getDocumentTitle(pathname) {
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
+  if (pathname.startsWith('/patients/')) return pathname.endsWith('/edit') ? 'Edit Patient' : 'Patient';
+  if (pathname.startsWith('/appointments/')) return pathname.endsWith('/edit') ? 'Edit Appointment' : 'Appointment';
+  if (pathname.startsWith('/invoices/')) return 'Invoice';
+  if (pathname.startsWith('/prescriptions/')) return pathname.endsWith('/edit') ? 'Edit Prescription' : 'Prescription';
+  if (pathname.startsWith('/medicines/')) return pathname.endsWith('/edit') ? 'Edit Medicine' : 'Medicine';
+  if (pathname.startsWith('/users/')) return pathname.endsWith('/edit') ? 'Edit User' : 'User';
+  return 'DoctorDesk.me';
+}
 import Layout from './layout/Layout';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
@@ -57,6 +97,13 @@ function PublicRoute({ children }) {
 }
 
 export default function App() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const title = getDocumentTitle(location.pathname);
+    document.title = title === 'DoctorDesk.me' ? title : `${title} – DoctorDesk.me`;
+  }, [location.pathname]);
+
   return (
     <Routes>
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />

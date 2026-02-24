@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Allow: /login
+Disallow: /forgot-password
+Disallow: /reset-password
+
+Sitemap: https://doctordesk.me/sitemap.xml

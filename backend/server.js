@@ -18,16 +18,30 @@ const allowedOrigins = [
   frontendOrigin,
   'https://doctordesk-three.vercel.app', // production frontend (fallback if FRONTEND_URL unset)
   'https://doctordesk.me',
+  'https://www.doctordesk.me',
+  'http://doctordesk.me',
+  'http://www.doctordesk.me',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
 ].filter((o, i, a) => a.indexOf(o) === i);
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    if (host === 'doctordesk.me' || host.endsWith('.doctordesk.me')) return true;
+  } catch (_) {}
+  return false;
+}
+
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        cb(null, true);
+      if (isAllowedOrigin(origin)) {
+        cb(null, origin || true);
       } else {
         cb(null, false);
       }

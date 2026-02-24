@@ -63,7 +63,23 @@ export default function AppointmentForm() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [whatsappSending, setWhatsappSending] = useState(false);
   const [lastVisitAppointment, setLastVisitAppointment] = useState(null);
+  const [customTime, setCustomTime] = useState('');
   const patientRef = useRef(null);
+
+  function add30Minutes(timeStr) {
+    if (!timeStr) return '';
+    const [h, m] = String(timeStr).split(':').map(Number);
+    const total = (h || 0) * 60 + (m || 0) + 30;
+    const nh = Math.floor(total / 60) % 24;
+    const nm = total % 60;
+    return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}:00`;
+  }
+
+  function normalizeTimeForApi(value) {
+    if (!value) return '';
+    const [h, m] = String(value).split(':').map(Number);
+    return `${String(h || 0).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}:00`;
+  }
 
   useEffect(() => {
     if (!form.patient_id) {
@@ -172,9 +188,9 @@ export default function AppointmentForm() {
 
   useEffect(() => {
     if (form.doctor_id && form.appointment_date && slots.length > 0 && !slots.includes(form.start_time)) {
-      setForm((f) => ({ ...f, start_time: '', end_time: '' }));
+      if (!customTime) setForm((f) => ({ ...f, start_time: '', end_time: '' }));
     }
-  }, [slots, form.doctor_id, form.appointment_date]);
+  }, [slots, form.doctor_id, form.appointment_date, customTime]);
 
   // Clear selected slot if it is now in the past (e.g. user left page open on today)
   useEffect(() => {
@@ -186,6 +202,7 @@ export default function AppointmentForm() {
     slotStart.setHours(h || 0, m || 0, 0, 0);
     if (new Date() >= slotStart) {
       setForm((f) => ({ ...f, start_time: '', end_time: '' }));
+      setCustomTime('');
     }
   }, [form.appointment_date, form.start_time]);
 
@@ -289,7 +306,7 @@ export default function AppointmentForm() {
     if (!form.patient_id) newErrors.patient_id = 'Select a patient';
     if (!isDoctorOrAdmin && !form.doctor_id) newErrors.doctor_id = 'Select a doctor';
     if (!form.appointment_date) newErrors.appointment_date = 'Select a date';
-    if (!form.start_time) newErrors.start_time = 'Select a time slot';
+    if (!form.start_time) newErrors.start_time = 'Select a time slot or enter a custom time';
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) {
       const first = Object.keys(newErrors)[0];
@@ -605,14 +622,14 @@ export default function AppointmentForm() {
                     <>
                       <select
                         id="field-start_time"
-                        value={form.start_time || ''}
+                        value={slotsForDropdown.includes(form.start_time) ? form.start_time : ''}
                         onChange={(e) => {
                           const value = e.target.value;
                           clearError('start_time');
+                          setCustomTime('');
                           setForm((f) => ({ ...f, start_time: value, end_time: value }));
                         }}
                         className={`w-full ${inputBase} min-w-0 pr-10 ${errors.start_time ? 'border-red-500' : ''}`}
-                        required
                         aria-label="Choose time slot (available times only)"
                         aria-describedby={errors.start_time ? 'error-start_time' : 'helper-start_time'}
                         aria-invalid={!!errors.start_time}
@@ -624,9 +641,32 @@ export default function AppointmentForm() {
                           </option>
                         ))}
                       </select>
-                      {slotsForDropdown.length === 0 && (
+                      <div className="mt-3">
+                        <label htmlFor="field-custom_time" className="mb-1 block text-xs font-medium text-gray-600">
+                          Or enter custom time
+                        </label>
+                        <input
+                          id="field-custom_time"
+                          type="time"
+                          value={customTime || (form.start_time && !slots.includes(form.start_time) ? String(form.start_time).slice(0, 5) : '')}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            clearError('start_time');
+                            setCustomTime(value);
+                            if (value) {
+                              const start = normalizeTimeForApi(value);
+                              setForm((f) => ({ ...f, start_time: start, end_time: add30Minutes(start) }));
+                            } else {
+                              setForm((f) => ({ ...f, start_time: '', end_time: '' }));
+                            }
+                          }}
+                          className={`w-full max-w-[10rem] ${inputBase} min-w-0 ${errors.start_time ? 'border-red-500' : ''}`}
+                          aria-label="Custom time (manual entry)"
+                        />
+                      </div>
+                      {slotsForDropdown.length === 0 && !customTime && !form.start_time && (
                         <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
-                          No slots available this day. Try another date.
+                          No slots available this day. Try another date or enter a custom time.
                         </p>
                       )}
                       {errors.start_time ? (
@@ -635,7 +675,7 @@ export default function AppointmentForm() {
                         </p>
                       ) : (
                         <p id="helper-start_time" className="mt-1.5 text-xs text-gray-500">
-                          Available times only. 30 min slots.
+                          Pick a slot or enter a custom time. 30 min duration.
                         </p>
                       )}
                     </>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { Plus, Pencil, Trash2, Search, Users, Upload, Download } from 'lucide-react';
@@ -46,10 +46,12 @@ const PATIENTS_CSV_HEADER = 'name,phone,email,age,gender,address,blood_group,all
 const PATIENTS_CSV_SAMPLE = `${PATIENTS_CSV_HEADER}\n"John Doe",9876543210,john@example.com,30,male,"123 Main St",O+,None,`;
 
 export default function Patients() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlSearch = searchParams.get('search') || '';
   const [list, setList] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 });
-  const [searchInput, setSearchInput] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState(urlSearch);
+  const [searchQuery, setSearchQuery] = useState(urlSearch);
   const [gender, setGender] = useState('');
   const [ageRange, setAgeRange] = useState('');
   const [sortKey, setSortKey] = useState('created_at');
@@ -87,6 +89,11 @@ export default function Patients() {
   );
 
   useEffect(() => {
+    setSearchInput(urlSearch);
+    setSearchQuery(urlSearch);
+  }, [urlSearch]);
+
+  useEffect(() => {
     const t = setTimeout(() => setSearchQuery(searchInput), DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [searchInput]);
@@ -101,8 +108,15 @@ export default function Patients() {
 
   const handleSearchSubmit = (e) => {
     e?.preventDefault();
-    setSearchQuery(searchInput);
+    const q = searchInput.trim();
+    setSearchQuery(q);
     setPagination((p) => ({ ...p, page: 1 }));
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (q) next.set('search', q);
+      else next.delete('search');
+      return next;
+    });
   };
 
   const handleSortChange = (key, order) => {

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Outlet, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getNavItemsForRole, getRoleDisplayName } from '../lib/navConfig';
 import Sidebar from '../components/ui/Sidebar';
@@ -11,6 +11,15 @@ export default function Layout() {
   const [headerSearch, setHeaderSearch] = useState('');
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (location.pathname === '/patients') {
+      const q = searchParams.get('search') || '';
+      setHeaderSearch((prev) => (prev !== q ? q : prev));
+    }
+  }, [location.pathname, searchParams]);
 
   const menuItems = getNavItemsForRole(user?.roleId).map((item) => ({
     ...item,

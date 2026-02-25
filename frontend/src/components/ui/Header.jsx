@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, Search, Bell, ChevronDown, Plus, Calendar } from 'lucide-react';
 import { Menu as HeadlessMenu } from '@headlessui/react';
 import Logo from './Logo';
@@ -68,6 +68,7 @@ export default function Header({
   user,
 }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const title = getPageTitle(pathname);
   const [notificationAppointments, setNotificationAppointments] = useState([]);
   const [notificationLoading, setNotificationLoading] = useState(false);
@@ -118,18 +119,26 @@ export default function Header({
 
       <div className="flex flex-1 items-center justify-end gap-3">
         {onSearchChange && (
-          <div className="hidden max-w-[220px] flex-1 md:block lg:max-w-xs">
+          <form
+            className="hidden max-w-[220px] flex-1 md:block lg:max-w-xs"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const q = (searchValue || '').trim();
+              if (q) navigate(`/patients?search=${encodeURIComponent(q)}`);
+            }}
+          >
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="search"
                 value={searchValue || ''}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Search…"
+                placeholder="Search patient"
+                aria-label="Search patient"
                 className="w-full rounded-xl border border-slate-200/80 bg-slate-50/80 py-2.5 pl-10 pr-4 text-body text-content placeholder-slate-400 shadow-soft transition-all duration-200 focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20"
               />
             </div>
-          </div>
+          </form>
         )}
 
         <Link

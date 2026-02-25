@@ -43,10 +43,21 @@ const clinicLogoUpload = multer({
   fileFilter: (_req, file, cb) => cb(null, true),
 });
 
+const memoryStorage = multer.memoryStorage();
+const csvUpload = multer({
+  storage: memoryStorage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /\.csv$/i.test(file.originalname) || file.mimetype === 'text/csv' || file.mimetype === 'application/vnd.ms-excel';
+    cb(null, !!ok);
+  },
+});
+
 module.exports = {
   singlePrescriptionAttachment: upload.single('attachment'),
   arrayPrescriptionAttachments: upload.array('attachments', 10),
   clinicLogoUpload: clinicLogoUpload.single('logo'),
+  csvUpload: csvUpload.single('file'),
   UPLOAD_DIR,
   CLINIC_LOGO_DIR,
 };

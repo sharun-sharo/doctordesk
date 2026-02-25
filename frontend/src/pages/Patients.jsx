@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
-import { Plus, Pencil, Trash2, Search, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Users, Upload, Download } from 'lucide-react';
 import DataTable from '../components/ui/DataTable';
 import PageHeader from '../components/ui/PageHeader';
 import Badge, { GenderBadge } from '../components/ui/Badge';
@@ -42,6 +42,9 @@ function parseAgeRange(range) {
   return { age_min: min, age_max: max };
 }
 
+const PATIENTS_CSV_HEADER = 'name,phone,email,age,gender,address,blood_group,allergies,medical_notes';
+const PATIENTS_CSV_SAMPLE = `${PATIENTS_CSV_HEADER}\n"John Doe",9876543210,john@example.com,30,male,"123 Main St",O+,None,`;
+
 export default function Patients() {
   const [list, setList] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 });
@@ -54,6 +57,8 @@ export default function Patients() {
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const fetchPatients = useCallback(
     (page = 1) => {
@@ -117,6 +122,50 @@ export default function Patients() {
       })
       .catch(() => toast.error('Delete failed'))
       .finally(() => setDeleting(false));
+  };
+
+  const handleDownloadSample = () => {
+    const blob = new Blob([PATIENTS_CSV_SAMPLE], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'patients-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleBulkUpload = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/\.csv$/i.test(file.name)) {
+      toast.error('Please upload a CSV file.');
+      return;
+    }
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    api
+      .post('/patients/bulk', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      .then(({ data }) => {
+        const { added, failed, total, errors } = data.data;
+        if (added > 0) {
+          toast.success(`Added ${added} patient(s).${failed > 0 ? ` ${failed} row(s) failed.` : ''}`);
+          fetchPatients(1);
+        }
+        if (failed > 0 && errors?.length) {
+          const msg = errors.slice(0, 5).map((e) => `Row ${e.row}: ${e.message}`).join('; ');
+          toast.error(msg + (errors.length > 5 ? '…' : ''), { duration: 6000 });
+        }
+        if (added === 0 && failed === total && total > 0) {
+          toast.error('No patients added. Check required columns: name, phone.');
+        }
+      })
+      .catch((err) => {
+        const msg = err.response?.data?.message || err.message || 'Upload failed';
+        toast.error(msg);
+      })
+      .finally(() => setUploading(false));
   };
 
   const formatPatientId = (id) => (id != null ? `PAT-${String(id).padStart(5, '0')}` : '—');
@@ -202,13 +251,44 @@ export default function Patients() {
         title="Patients"
         description="Manage patient records and demographics."
       >
-        <Link
-          to="/patients/new"
-          className="btn-primary inline-flex w-full sm:w-auto justify-center items-center gap-2"
-        >
-          <Plus className="h-5 w-5 shrink-0" aria-hidden />
-          Add Patient
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDownloadSample}
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            <Download className="h-4 w-4 shrink-0" aria-hidden />
+            Sample CSV
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            aria-hidden
+            onChange={handleBulkUpload}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            {uploading ? (
+              <span className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />
+            ) : (
+              <Upload className="h-4 w-4 shrink-0" aria-hidden />
+            )}
+            {uploading ? 'Uploading…' : 'Upload patients'}
+          </button>
+          <Link
+            to="/patients/new"
+            className="btn-primary inline-flex w-full sm:w-auto justify-center items-center gap-2"
+          >
+            <Plus className="h-5 w-5 shrink-0" aria-hidden />
+            Add Patient
+          </Link>
+        </div>
       </PageHeader>
 
       <div className="space-y-4">

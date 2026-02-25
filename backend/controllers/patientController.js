@@ -234,4 +234,121 @@ async function getMedicalHistory(req, res, next) {
   }
 }
 
-module.exports = { list, getOne, create, update, remove, getMedicalHistory };
+/**
+ * Parse a single CSV line respecting quoted fields (e.g. "a,b" stays one field).
+ */
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') inQuotes = !inQuotes;
+    else if (c === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else current += c;
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parseCSVBuffer(buffer) {
+  const text = buffer.toString('utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = text.split('\n').filter((l) => l.trim());
+  if (lines.length < 2) return { header: [], rows: [] };
+  const header = parseCSVLine(lines[0]).map((h) => String(h).toLowerCase().replace(/\s+/g, '_'));
+  const rows = lines.slice(1).map((line) => {
+    const vals = parseCSVLine(line);
+    const obj = {};
+    header.forEach((h, i) => {
+      obj[h] = vals[i] != null ? String(vals[i]).trim() : '';
+    });
+    return obj;
+  });
+  return { header, rows };
+}
+
+function ageToDateOfBirth(ageStr) {
+  const n = parseInt(String(ageStr).trim(), 10);
+  if (Number.isNaN(n) || n < 0 || n > 150) return null;
+  const year = new Date().getFullYear() - n;
+  return `${year}-01-01`;
+}
+
+async function bulkCreate(req, res, next) {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ success: false, message: 'No CSV file uploaded' });
+    }
+    const { rows } = parseCSVBuffer(req.file.buffer);
+    const errors = [];
+    let added = 0;
+    const createdBy = req.user.id;
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2; // 1-based, + header
+      const name = (row.name || row.full_name || '').trim();
+      const phone = (row.phone || row.phone_number || '').trim().replace(/\s/g, '');
+      if (!name) {
+        errors.push({ row: rowNum, message: 'Name is required' });
+        continue;
+      }
+      if (!phone) {
+        errors.push({ row: rowNum, message: 'Phone is required' });
+        continue;
+      }
+      const email = (row.email || '').trim() || null;
+      const ageStr = row.age != null ? row.age : row.date_of_birth;
+      const date_of_birth = ageToDateOfBirth(ageStr) || (row.date_of_birth || '').trim() || null;
+      const gender = (row.gender || '').toLowerCase().trim();
+      const validGender = ['male', 'female', 'other'].includes(gender) ? gender : null;
+      const address = (row.address || '').trim() || null;
+      const blood_group = (row.blood_group || row.bloodgroup || '').trim() || null;
+      const allergies = (row.allergies || '').trim() || null;
+      const medical_notes = (row.medical_notes || row.notes || '').trim() || null;
+
+      try {
+        await pool.execute(
+          `INSERT INTO patients (name, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            name,
+            email,
+            phone,
+            date_of_birth,
+            validGender,
+            address,
+            blood_group,
+            allergies,
+            medical_notes,
+            createdBy,
+          ]
+        );
+        added++;
+      } catch (err) {
+        const msg = err.code === 'ER_DUP_ENTRY' ? 'Duplicate phone or email' : (err.message || 'Insert failed');
+        errors.push({ row: rowNum, message: msg });
+      }
+    }
+
+    await logActivity({
+      userId: req.user.id,
+      action: 'bulk_create',
+      entityType: 'patient',
+      entityId: null,
+      newValues: { added, failed: errors.length, total: rows.length },
+      req,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { added, failed: errors.length, total: rows.length, errors: errors.slice(0, 50) },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, getOne, create, update, remove, getMedicalHistory, bulkCreate };

@@ -206,11 +206,12 @@ export default function Appointments() {
           <button
             type="button"
             onClick={() => handleSendSms(row.id)}
-            className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-green-600 focus:outline-none focus:ring-2 focus:ring-green-500/20"
+            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg text-sm text-slate-600 border border-slate-200 transition-colors hover:bg-green-50 hover:border-green-200 hover:text-green-700 focus:outline-none focus:ring-2 focus:ring-green-500/20"
             aria-label="Send SMS"
             title="Send SMS to patient"
           >
-            <MessageCircle className="h-4 w-4" />
+            <MessageCircle className="h-4 w-4 shrink-0" />
+            <span>Send SMS</span>
           </button>
           <Link
             to={`/appointments/${row.id}/edit`}

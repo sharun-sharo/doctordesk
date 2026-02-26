@@ -17,10 +17,24 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+function isNetworkError(err) {
+  return err?.code === 'ERR_NETWORK' || err?.message === 'Network Error';
+}
+
+function isLikelyProductionMisconfig() {
+  if (typeof window === 'undefined') return false;
+  const apiPointsToLocalhost = !API_BASE || API_BASE.includes('localhost') || API_BASE.startsWith('http://127.0.0.1');
+  const appNotOnLocalhost = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+  return apiPointsToLocalhost && appNotOnLocalhost;
+}
+
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
     const original = err.config;
+    if (isNetworkError(err) && isLikelyProductionMisconfig()) {
+      err.message = "Can't reach the server. If you're the admin, set VITE_API_URL to your backend URL when building the frontend (see .env.example).";
+    }
     if (err.response?.status === 401 && !original._retry) {
       original._retry = true;
       const refresh = localStorage.getItem('refreshToken');

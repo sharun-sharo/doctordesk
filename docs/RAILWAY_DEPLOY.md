@@ -80,4 +80,4 @@ After variables and schema are set, **Redeploy** the backend service. It should 
 
 ## 6. Frontend
 
-Deploy the frontend (e.g. Vercel/Netlify) with `VITE_API_URL` set to your Railway backend URL (e.g. `https://your-app.up.railway.app/api/v1`). Set `FRONTEND_URL` on Railway to that frontend URL.
+Deploy the frontend (e.g. Vercel/Netlify) with **`VITE_API_URL`** set to your Railway backend URL (e.g. `https://your-app.up.railway.app/api/v1`). This is required at **build time**—without it, users will see "Network error" on login because the app will try to call localhost. In Vercel: Project → Settings → Environment Variables → add `VITE_API_URL` = your Railway API URL including `/api/v1`, then redeploy. Set `FRONTEND_URL` on Railway to your frontend URL (e.g. `https://doctordesk.me`).

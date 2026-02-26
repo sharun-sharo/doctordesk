@@ -5,10 +5,13 @@ async function getStats(req, res, next) {
   try {
     const userId = req.user.id;
     const roleId = req.user.roleId;
-    // Doctor/Admin: only their data. Receptionist: all clinic appointments (no doctor filter).
-    const doctorId = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)
-      ? userId
-      : null;
+    // Doctor/Admin: only their data. Receptionist/Assistant: only assigned doctors' appointments.
+    const isDoctorOrAdmin = roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN;
+    const isReceptionistOrAssistant = roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR;
+    const doctorId = isDoctorOrAdmin ? userId : null;
+    const receptionistFilter = isReceptionistOrAssistant
+      ? ' AND doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)'
+      : '';
 
     const [patientsCount] = await pool.execute(
       'SELECT COUNT(*) AS total FROM patients WHERE deleted_at IS NULL'
@@ -18,19 +21,26 @@ async function getStats(req, res, next) {
        AND status = 'scheduled' AND appointment_date >= CURDATE()`;
     let todaySql = `SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
        AND appointment_date = CURDATE() AND status IN ('scheduled','completed')`;
-    const appointmentParams = doctorId != null ? [doctorId] : [];
+    const appointmentParams = doctorId != null ? [doctorId] : (isReceptionistOrAssistant ? [userId] : []);
     if (doctorId != null) {
       upcomingSql += ' AND doctor_id = ?';
       todaySql += ' AND doctor_id = ?';
+    } else if (isReceptionistOrAssistant) {
+      upcomingSql += receptionistFilter;
+      todaySql += receptionistFilter;
     }
     const [appointmentsCount] = await pool.execute(upcomingSql, appointmentParams);
     const [todayAppointments] = await pool.execute(todaySql, appointmentParams);
 
     let revenueQuery = 'SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL';
     const revenueParams = [];
-    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+    if (isDoctorOrAdmin) {
       revenueQuery =
         'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ?';
+      revenueParams.push(userId);
+    } else if (isReceptionistOrAssistant) {
+      revenueQuery =
+        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)';
       revenueParams.push(userId);
     }
     const [revenue] = await pool.execute(revenueQuery, revenueParams);
@@ -38,12 +48,14 @@ async function getStats(req, res, next) {
     let appointmentsQuery = `
       SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
       AND appointment_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`;
-    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+    if (isDoctorOrAdmin) {
       appointmentsQuery += ' AND doctor_id = ?';
+    } else if (isReceptionistOrAssistant) {
+      appointmentsQuery += receptionistFilter;
     }
     const [last30Appointments] = await pool.execute(
       appointmentsQuery,
-      (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []
+      isDoctorOrAdmin ? [userId] : (isReceptionistOrAssistant ? [userId] : [])
     );
 
     const data = {
@@ -93,6 +105,8 @@ async function getRevenueChart(req, res, next) {
     const range = req.query.range;
     const roleId = req.user.roleId;
     const userId = req.user.id;
+    const isDoctorOrAdmin = roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN;
+    const isReceptionistOrAssistant = roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR;
 
     if (range === 'weekly') {
       // Current week Monday–Sunday (MySQL WEEKDAY: 0=Mon, 6=Sun)
@@ -105,11 +119,22 @@ async function getRevenueChart(req, res, next) {
         GROUP BY DATE(created_at)
       `;
       const params = [];
-      if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+      if (isDoctorOrAdmin) {
         query = `
           SELECT DATE(i.created_at) AS d, SUM(i.total) AS revenue
           FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id
           WHERE i.deleted_at IS NULL AND a.doctor_id = ?
+          AND DATE(i.created_at) BETWEEN
+            DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+            AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY)
+          GROUP BY DATE(i.created_at)
+        `;
+        params.push(userId);
+      } else if (isReceptionistOrAssistant) {
+        query = `
+          SELECT DATE(i.created_at) AS d, SUM(i.total) AS revenue
+          FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id
+          WHERE i.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)
           AND DATE(i.created_at) BETWEEN
             DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
             AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY)
@@ -139,11 +164,20 @@ async function getRevenueChart(req, res, next) {
       AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
     `;
     const params = [months];
-    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+    if (isDoctorOrAdmin) {
       query = `
         SELECT DATE_FORMAT(i.created_at, '%Y-%m') AS month, SUM(i.total) AS revenue
         FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id
         WHERE i.deleted_at IS NULL AND a.doctor_id = ?
+        AND i.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+        GROUP BY DATE_FORMAT(i.created_at, '%Y-%m') ORDER BY month
+      `;
+      params.unshift(userId);
+    } else if (isReceptionistOrAssistant) {
+      query = `
+        SELECT DATE_FORMAT(i.created_at, '%Y-%m') AS month, SUM(i.total) AS revenue
+        FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id
+        WHERE i.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)
         AND i.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
         GROUP BY DATE_FORMAT(i.created_at, '%Y-%m') ORDER BY month
       `;
@@ -183,9 +217,11 @@ async function getMetrics(req, res, next) {
     const userId = req.user.id;
     const revenueTarget = parseFloat(process.env.REVENUE_TARGET || '50000') || 50000;
 
-    const baseWhere = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? ' AND a.doctor_id = ?' : '';
-    const baseWhereNoAlias = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? ' AND doctor_id = ?' : '';
-    const baseParams = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : [];
+    const isDoctorOrAdmin = roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN;
+    const isReceptionistOrAssistant = roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR;
+    const baseWhere = isDoctorOrAdmin ? ' AND a.doctor_id = ?' : (isReceptionistOrAssistant ? ' AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)' : '');
+    const baseWhereNoAlias = isDoctorOrAdmin ? ' AND doctor_id = ?' : (isReceptionistOrAssistant ? ' AND doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)' : '');
+    const baseParams = (isDoctorOrAdmin || isReceptionistOrAssistant) ? [userId] : [];
 
     // Total patients this month (with appointments)
     const [totalPatientsThisMonth] = await pool.execute(
@@ -201,10 +237,12 @@ async function getMetrics(req, res, next) {
     );
 
     // Returning patients (2+ appointments ever)
-    const retQuery = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)
+    const retQuery = isDoctorOrAdmin
       ? `SELECT COUNT(*) AS total FROM (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND a.doctor_id = ? GROUP BY a.patient_id HAVING COUNT(*) >= 2) t`
-      : `SELECT COUNT(*) AS total FROM (SELECT patient_id FROM appointments WHERE deleted_at IS NULL GROUP BY patient_id HAVING COUNT(*) >= 2) t`;
-    const [returning] = await pool.execute(retQuery, (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []);
+      : isReceptionistOrAssistant
+        ? `SELECT COUNT(*) AS total FROM (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) GROUP BY a.patient_id HAVING COUNT(*) >= 2) t`
+        : `SELECT COUNT(*) AS total FROM (SELECT patient_id FROM appointments WHERE deleted_at IS NULL GROUP BY patient_id HAVING COUNT(*) >= 2) t`;
+    const [returning] = await pool.execute(retQuery, (isDoctorOrAdmin || isReceptionistOrAssistant) ? [userId] : []);
 
     // Today's appointments
     const [todayAppts] = await pool.execute(
@@ -227,17 +265,21 @@ async function getMetrics(req, res, next) {
 
     // Revenue this month
     let revThisMonthQuery = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
-    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+    if (isDoctorOrAdmin) {
       revThisMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+    } else if (isReceptionistOrAssistant) {
+      revThisMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
     }
-    const [revThisMonth] = await pool.execute(revThisMonthQuery, (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []);
+    const [revThisMonth] = await pool.execute(revThisMonthQuery, (isDoctorOrAdmin || isReceptionistOrAssistant) ? [userId] : []);
 
     // Revenue last month
     let revLastMonthQuery = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL AND created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
-    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+    if (isDoctorOrAdmin) {
       revLastMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND i.created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+    } else if (isReceptionistOrAssistant) {
+      revLastMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) AND i.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND i.created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
     }
-    const [revLastMonth] = await pool.execute(revLastMonthQuery, (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []);
+    const [revLastMonth] = await pool.execute(revLastMonthQuery, (isDoctorOrAdmin || isReceptionistOrAssistant) ? [userId] : []);
 
     const revThis = parseFloat(revThisMonth[0]?.total || 0);
     const revLast = parseFloat(revLastMonth[0]?.total || 0);
@@ -255,17 +297,21 @@ async function getMetrics(req, res, next) {
 
     // Year to Date revenue (from January 1st of current year)
     let yearToDateRevenueQuery = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL AND created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')`;
-    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+    if (isDoctorOrAdmin) {
       yearToDateRevenueQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')`;
+    } else if (isReceptionistOrAssistant) {
+      yearToDateRevenueQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')`;
     }
-    const [yearToDateRevenue] = await pool.execute(yearToDateRevenueQuery, (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []);
+    const [yearToDateRevenue] = await pool.execute(yearToDateRevenueQuery, (isDoctorOrAdmin || isReceptionistOrAssistant) ? [userId] : []);
 
     // Collection vs Pending
     let collectionQuery = `SELECT COALESCE(SUM(paid_amount), 0) AS collected, COALESCE(SUM(total - paid_amount), 0) AS pending FROM invoices WHERE deleted_at IS NULL`;
-    if ((roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN)) {
+    if (isDoctorOrAdmin) {
       collectionQuery = `SELECT COALESCE(SUM(i.paid_amount), 0) AS collected, COALESCE(SUM(i.total - i.paid_amount), 0) AS pending FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ?`;
+    } else if (isReceptionistOrAssistant) {
+      collectionQuery = `SELECT COALESCE(SUM(i.paid_amount), 0) AS collected, COALESCE(SUM(i.total - i.paid_amount), 0) AS pending FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)`;
     }
-    const [collection] = await pool.execute(collectionQuery, (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : []);
+    const [collection] = await pool.execute(collectionQuery, (isDoctorOrAdmin || isReceptionistOrAssistant) ? [userId] : []);
 
     // Avg consultation time (from completed appointments with end_time)
     const avgConsultQuery = `SELECT AVG(TIMESTAMPDIFF(MINUTE, CONCAT(a.appointment_date, ' ', a.start_time), CONCAT(a.appointment_date, ' ', COALESCE(a.end_time, ADDTIME(a.start_time, '00:30:00'))))) AS avg_mins
@@ -337,8 +383,10 @@ async function getDailyAppointmentDistribution(req, res, next) {
   try {
     const roleId = req.user.roleId;
     const userId = req.user.id;
-    const baseWhere = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? ' AND doctor_id = ?' : '';
-    const params = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [userId] : [];
+    const isDoctorOrAdmin = roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN;
+    const isReceptionistOrAssistant = roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR;
+    const baseWhere = isDoctorOrAdmin ? ' AND doctor_id = ?' : (isReceptionistOrAssistant ? ' AND doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)' : '');
+    const params = (isDoctorOrAdmin || isReceptionistOrAssistant) ? [userId] : [];
     const [rows] = await pool.execute(
       `SELECT DAYNAME(appointment_date) AS day_name, COUNT(*) AS count
        FROM appointments WHERE deleted_at IS NULL
@@ -364,8 +412,10 @@ async function getNewVsReturningChart(req, res, next) {
     const months = parseInt(req.query.months, 10) || 6;
     const roleId = req.user.roleId;
     const userId = req.user.id;
-    const doctorFilter = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? ' AND a.doctor_id = ?' : '';
-    const params = (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) ? [months, userId] : [months];
+    const isDoctorOrAdmin = roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN;
+    const isReceptionistOrAssistant = roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR;
+    const doctorFilter = isDoctorOrAdmin ? ' AND a.doctor_id = ?' : (isReceptionistOrAssistant ? ' AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)' : '');
+    const params = (isDoctorOrAdmin || isReceptionistOrAssistant) ? [months, userId] : [months];
     const [rows] = await pool.execute(
       `SELECT DATE_FORMAT(a.appointment_date, '%Y-%m') AS month,
          COUNT(DISTINCT CASE WHEN p.created_at >= DATE_FORMAT(a.appointment_date, '%Y-%m-01') AND p.created_at < DATE_ADD(DATE_FORMAT(a.appointment_date, '%Y-%m-01'), INTERVAL 1 MONTH) THEN a.patient_id END) AS new_patients,

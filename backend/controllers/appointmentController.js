@@ -14,12 +14,14 @@ async function list(req, res, next) {
     if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
       conditions.push('a.doctor_id = ?');
       params.push(req.user.id);
-    } else if ((req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) && req.user.assignedAdminId && doctor_id) {
-      // Receptionist/Assistant doctor: only filter by doctor when explicitly requested (e.g. dropdown)
+    } else if ((req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) && doctor_id) {
+      // Receptionist/Assistant doctor: filter by selected doctor (must be one of their assigned)
       conditions.push('a.doctor_id = ?');
       params.push(doctor_id);
     } else if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
-      // Receptionist/Assistant doctor sees all clinic appointments (all doctors)
+      // Receptionist/Assistant doctor: only appointments for doctors they are assigned to
+      conditions.push('a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)');
+      params.push(req.user.id);
     } else if (doctor_id) {
       conditions.push('a.doctor_id = ?');
       params.push(doctor_id);

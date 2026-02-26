@@ -139,9 +139,15 @@ export default function Appointments() {
     }).catch(() => toast.error('Failed to update'));
   };
 
-  const handleSendSms = (id) => {
-    setSmsId(id);
-    setSmsMessage('');
+  const getDefaultSmsMessage = (row) => {
+    const longDateStr = new Date(row.appointment_date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    const timeStr = formatTime12h(row.start_time);
+    return `Hi ${row.patient_name}, your appointment with ${row.doctor_name || 'your doctor'} is on ${longDateStr}${timeStr !== '—' ? ` at ${timeStr}` : ''}. - DoctorDesk`;
+  };
+
+  const handleSendSms = (row) => {
+    setSmsId(row.id);
+    setSmsMessage(getDefaultSmsMessage(row));
   };
 
   const confirmSendSms = () => {
@@ -205,7 +211,7 @@ export default function Appointments() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => handleSendSms(row.id)}
+            onClick={() => handleSendSms(row)}
             className="inline-flex items-center gap-2 h-9 px-3 rounded-lg text-sm text-slate-600 border border-slate-200 transition-colors hover:bg-green-50 hover:border-green-200 hover:text-green-700 focus:outline-none focus:ring-2 focus:ring-green-500/20"
             aria-label="Send SMS"
             title="Send SMS to patient"
@@ -504,12 +510,11 @@ export default function Appointments() {
       </Modal>
 
       <Modal open={!!smsId} onClose={() => { setSmsId(null); setSmsMessage(''); }} title="Send SMS to patient">
-        <p className="text-sm text-slate-600 mb-3">A message will be sent to the patient&apos;s phone. Leave blank to send the default appointment reminder.</p>
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-3">To enable SMS, add Twilio credentials to <code className="bg-amber-100/80 px-1 rounded">backend/.env</code>: <code className="bg-amber-100/80 px-1 rounded">TWILIO_ACCOUNT_SID</code>, <code className="bg-amber-100/80 px-1 rounded">TWILIO_AUTH_TOKEN</code>, <code className="bg-amber-100/80 px-1 rounded">TWILIO_SMS_FROM</code>. See <code className="bg-amber-100/80 px-1 rounded">.env.example</code>.</p>
+        <p className="text-sm text-slate-600 mb-3">A message will be sent to the patient&apos;s phone. Edit the text below if you want to change the reminder.</p>
         <textarea
           value={smsMessage}
           onChange={(e) => setSmsMessage(e.target.value)}
-          placeholder="Optional: type a custom message..."
+          placeholder="Appointment reminder message..."
           className="input-field w-full min-h-[100px] resize-y mb-4"
           rows={3}
         />

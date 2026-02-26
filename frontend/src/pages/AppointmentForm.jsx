@@ -61,7 +61,7 @@ export default function AppointmentForm() {
   const [newPatientSaving, setNewPatientSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [whatsappSending, setWhatsappSending] = useState(false);
+  const [smsSending, setSmsSending] = useState(false);
   const [lastVisitAppointment, setLastVisitAppointment] = useState(null);
   const [customTime, setCustomTime] = useState('');
   const patientRef = useRef(null);
@@ -277,14 +277,21 @@ export default function AppointmentForm() {
     }
   };
 
-  const handleSendWhatsApp = () => {
+  const handleSendSms = () => {
     if (!id) return;
-    setWhatsappSending(true);
+    setSmsSending(true);
     api
-      .post(`/appointments/${id}/send-whatsapp`, {})
-      .then(() => toast.success('WhatsApp sent'))
-      .catch((err) => toast.error(err.response?.data?.message || 'Failed to send WhatsApp'))
-      .finally(() => setWhatsappSending(false));
+      .post(`/appointments/${id}/send-sms`, {})
+      .then(() => toast.success('SMS sent'))
+      .catch((err) => {
+        const msg = err.response?.data?.message || 'Failed to send SMS';
+        if (msg.includes('not configured')) {
+          toast.error('SMS not set up. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_SMS_FROM to backend/.env');
+        } else {
+          toast.error(msg);
+        }
+      })
+      .finally(() => setSmsSending(false));
   };
 
   const clearError = (field) => setErrors((e) => ({ ...e, [field]: null }));
@@ -737,13 +744,13 @@ export default function AppointmentForm() {
               {isEdit && (
                 <button
                   type="button"
-                  onClick={handleSendWhatsApp}
-                  disabled={whatsappSending}
+                  onClick={handleSendSms}
+                  disabled={smsSending}
                   className="btn-secondary inline-flex items-center gap-2 text-green-700 border-green-200 hover:bg-green-50 hover:border-green-300"
-                  aria-label="Send WhatsApp to patient"
+                  aria-label="Send SMS to patient"
                 >
                   <MessageCircle className="h-4 w-4" />
-                  {whatsappSending ? 'Sending…' : 'Send WhatsApp'}
+                  {smsSending ? 'Sending…' : 'Send SMS'}
                 </button>
               )}
               <button

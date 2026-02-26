@@ -62,9 +62,9 @@ export default function Appointments() {
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cancelId, setCancelId] = useState(null);
-  const [whatsappId, setWhatsappId] = useState(null);
-  const [whatsappMessage, setWhatsappMessage] = useState('');
-  const [whatsappSending, setWhatsappSending] = useState(false);
+  const [smsId, setSmsId] = useState(null);
+  const [smsMessage, setSmsMessage] = useState('');
+  const [smsSending, setSmsSending] = useState(false);
   const [view, setView] = useState('list');
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const d = new Date();
@@ -139,25 +139,32 @@ export default function Appointments() {
     }).catch(() => toast.error('Failed to update'));
   };
 
-  const handleSendWhatsApp = (id) => {
-    setWhatsappId(id);
-    setWhatsappMessage('');
+  const handleSendSms = (id) => {
+    setSmsId(id);
+    setSmsMessage('');
   };
 
-  const confirmSendWhatsApp = () => {
-    if (!whatsappId) return;
-    setWhatsappSending(true);
-    const payload = whatsappMessage.trim() ? { message: whatsappMessage.trim() } : {};
+  const confirmSendSms = () => {
+    if (!smsId) return;
+    setSmsSending(true);
+    const payload = smsMessage.trim() ? { message: smsMessage.trim() } : {};
     api
-      .post(`/appointments/${whatsappId}/send-whatsapp`, payload)
+      .post(`/appointments/${smsId}/send-sms`, payload)
       .then(() => {
-        toast.success('WhatsApp sent');
-        setWhatsappId(null);
-        setWhatsappMessage('');
+        toast.success('SMS sent');
+        setSmsId(null);
+        setSmsMessage('');
         fetch(pagination.page);
       })
-      .catch((err) => toast.error(err.response?.data?.message || 'Failed to send WhatsApp'))
-      .finally(() => setWhatsappSending(false));
+      .catch((err) => {
+        const msg = err.response?.data?.message || 'Failed to send SMS';
+        if (msg.includes('not configured')) {
+          toast.error('SMS not set up. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_SMS_FROM to backend/.env');
+        } else {
+          toast.error(msg);
+        }
+      })
+      .finally(() => setSmsSending(false));
   };
 
   const columns = [
@@ -198,10 +205,10 @@ export default function Appointments() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => handleSendWhatsApp(row.id)}
+            onClick={() => handleSendSms(row.id)}
             className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-green-600 focus:outline-none focus:ring-2 focus:ring-green-500/20"
-            aria-label="Send WhatsApp"
-            title="Send WhatsApp to patient"
+            aria-label="Send SMS"
+            title="Send SMS to patient"
           >
             <MessageCircle className="h-4 w-4" />
           </button>
@@ -495,19 +502,20 @@ export default function Appointments() {
         </div>
       </Modal>
 
-      <Modal open={!!whatsappId} onClose={() => { setWhatsappId(null); setWhatsappMessage(''); }} title="Send WhatsApp to patient">
+      <Modal open={!!smsId} onClose={() => { setSmsId(null); setSmsMessage(''); }} title="Send SMS to patient">
         <p className="text-sm text-slate-600 mb-3">A message will be sent to the patient&apos;s phone. Leave blank to send the default appointment reminder.</p>
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-3">To enable SMS, add Twilio credentials to <code className="bg-amber-100/80 px-1 rounded">backend/.env</code>: <code className="bg-amber-100/80 px-1 rounded">TWILIO_ACCOUNT_SID</code>, <code className="bg-amber-100/80 px-1 rounded">TWILIO_AUTH_TOKEN</code>, <code className="bg-amber-100/80 px-1 rounded">TWILIO_SMS_FROM</code>. See <code className="bg-amber-100/80 px-1 rounded">.env.example</code>.</p>
         <textarea
-          value={whatsappMessage}
-          onChange={(e) => setWhatsappMessage(e.target.value)}
+          value={smsMessage}
+          onChange={(e) => setSmsMessage(e.target.value)}
           placeholder="Optional: type a custom message..."
           className="input-field w-full min-h-[100px] resize-y mb-4"
           rows={3}
         />
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={() => { setWhatsappId(null); setWhatsappMessage(''); }} className="btn-secondary">Cancel</button>
-          <button type="button" onClick={confirmSendWhatsApp} disabled={whatsappSending} className="btn-primary inline-flex items-center gap-2">
-            {whatsappSending ? 'Sending…' : 'Send WhatsApp'}
+          <button type="button" onClick={() => { setSmsId(null); setSmsMessage(''); }} className="btn-secondary">Cancel</button>
+          <button type="button" onClick={confirmSendSms} disabled={smsSending} className="btn-primary inline-flex items-center gap-2">
+            {smsSending ? 'Sending…' : 'Send SMS'}
           </button>
         </div>
       </Modal>

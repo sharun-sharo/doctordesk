@@ -3,7 +3,7 @@
 ## 1. Backend service
 
 - **Root Directory:** Set to `backend` in the service **Settings → Source**.
-- **Variables:** Add `NODE_ENV=production`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `FRONTEND_URL`.
+- **Variables:** Add `NODE_ENV=production`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `FRONTEND_URL`. For **SMS (Send SMS to patient)** add: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM` (your Twilio phone number, e.g. `+1234567890`); get them from [Twilio Console](https://console.twilio.com).
 
 ## 2. MySQL database
 

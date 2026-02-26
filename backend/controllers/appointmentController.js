@@ -1,7 +1,7 @@
 const { pool } = require('../config/database');
 const { logActivity } = require('../utils/activityLogger');
 const { ROLES } = require('../config/roles');
-const { sendWhatsApp } = require('../services/whatsapp');
+const { sendSms } = require('../services/sms');
 
 async function list(req, res, next) {
   try {
@@ -200,20 +200,12 @@ async function create(req, res, next) {
           const ampm = h < 12 ? 'am' : 'pm';
           timeStr = m ? `${h12}:${String(m).padStart(2, '0')}${ampm}` : `${h12}${ampm}`;
         }
-        const contentSid = process.env.TWILIO_WHATSAPP_CONTENT_SID;
-        if (contentSid) {
-          await sendWhatsApp(appointment.patient_phone, {
-            contentSid,
-            contentVariables: { '1': dateStr, '2': timeStr },
-          });
-        } else {
-          const longDateStr = apptDate.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-          const body = `Hi ${appointment.patient_name}, your appointment with ${appointment.doctor_name} is on ${longDateStr}${timeStr !== '—' ? ` at ${timeStr}` : ''}. - DoctorDesk`;
-          await sendWhatsApp(appointment.patient_phone, body);
-        }
-      } catch (whatsappErr) {
-        // Don't fail appointment creation if WhatsApp fails (e.g. not configured or delivery error)
-        console.error('WhatsApp send after book appointment:', whatsappErr.message);
+        const longDateStr = apptDate.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+        const body = `Hi ${appointment.patient_name}, your appointment with ${appointment.doctor_name} is on ${longDateStr}${timeStr !== '—' ? ` at ${timeStr}` : ''}. - DoctorDesk`;
+        await sendSms(appointment.patient_phone, body);
+      } catch (smsErr) {
+        // Don't fail appointment creation if SMS fails (e.g. not configured or delivery error)
+        console.error('SMS send after book appointment:', smsErr.message);
       }
     }
     res.status(201).json({ success: true, data: rows[0] });
@@ -302,7 +294,7 @@ async function remove(req, res, next) {
   }
 }
 
-async function sendWhatsAppMessage(req, res, next) {
+async function sendSmsMessage(req, res, next) {
   try {
     const id = parseInt(req.params.id, 10);
     const [rows] = await pool.execute(
@@ -327,7 +319,6 @@ async function sendWhatsAppMessage(req, res, next) {
 
     const customMessage = req.body.message && String(req.body.message).trim();
     const apptDate = new Date(appointment.appointment_date);
-    const dateStr = `${apptDate.getMonth() + 1}/${apptDate.getDate()}`;
     let timeStr = '—';
     if (appointment.start_time) {
       const [h, m] = String(appointment.start_time).split(':').map(Number);
@@ -335,24 +326,15 @@ async function sendWhatsAppMessage(req, res, next) {
       const ampm = h < 12 ? 'am' : 'pm';
       timeStr = m ? `${h12}:${String(m).padStart(2, '0')}${ampm}` : `${h12}${ampm}`;
     }
-    const contentSid = process.env.TWILIO_WHATSAPP_CONTENT_SID;
-
-    if (contentSid && !customMessage) {
-      await sendWhatsApp(appointment.patient_phone, {
-        contentSid,
-        contentVariables: { '1': dateStr, '2': timeStr },
-      });
-    } else {
-      const longDateStr = new Date(appointment.appointment_date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-      const defaultBody = `Hi ${appointment.patient_name}, your appointment with ${appointment.doctor_name} is on ${longDateStr}${timeStr !== '—' ? ` at ${timeStr}` : ''}. - DoctorDesk`;
-      await sendWhatsApp(appointment.patient_phone, customMessage || defaultBody);
-    }
-    await logActivity({ userId: req.user.id, action: 'send_whatsapp', entityType: 'appointment', entityId: id, req });
-    res.json({ success: true, message: 'WhatsApp sent' });
+    const longDateStr = new Date(appointment.appointment_date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    const defaultBody = `Hi ${appointment.patient_name}, your appointment with ${appointment.doctor_name} is on ${longDateStr}${timeStr !== '—' ? ` at ${timeStr}` : ''}. - DoctorDesk`;
+    await sendSms(appointment.patient_phone, customMessage || defaultBody);
+    await logActivity({ userId: req.user.id, action: 'send_sms', entityType: 'appointment', entityId: id, req });
+    res.json({ success: true, message: 'SMS sent' });
   } catch (err) {
     const status = err.message && (err.message.includes('not configured') || err.message.includes('Invalid')) ? 400 : 500;
-    res.status(status).json({ success: false, message: err.message || 'Failed to send WhatsApp' });
+    res.status(status).json({ success: false, message: err.message || 'Failed to send SMS' });
   }
 }
 
-module.exports = { list, getOne, getSlots, create, update, remove, sendWhatsAppMessage };
+module.exports = { list, getOne, getSlots, create, update, remove, sendSmsMessage };

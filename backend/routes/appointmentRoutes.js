@@ -13,7 +13,7 @@ router.get('/slots', appointmentController.getSlots);
 router.get('/', appointmentController.list);
 router.get('/:id', appointmentController.getOne);
 router.post('/', createRules, validate, appointmentController.create);
-router.post('/:id/send-whatsapp', appointmentController.sendWhatsAppMessage);
+router.post('/:id/send-sms', appointmentController.sendSmsMessage);
 router.put('/:id', updateRules, validate, appointmentController.update);
 router.delete('/:id', appointmentController.remove);
 

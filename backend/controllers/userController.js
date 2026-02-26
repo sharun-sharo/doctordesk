@@ -331,22 +331,17 @@ async function getDoctors(req, res, next) {
     const userId = req.user.id;
     const assignedAdminId = req.user.assignedAdminId;
 
-    // Reception / Assistant doctor: assigned doctors (from receptionist_doctors) + all Assistant doctors (for appointment "doctor" list)
+    // Reception / Assistant doctor: only doctors they are assigned to (from receptionist_doctors)
     if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
       const [assigned] = await pool.execute(
         `SELECT u.id, u.name, u.email, u.phone FROM users u
          INNER JOIN receptionist_doctors rd ON rd.doctor_id = u.id
-         WHERE rd.receptionist_id = ? AND u.deleted_at IS NULL AND u.is_active = 1`,
+         WHERE rd.receptionist_id = ? AND u.deleted_at IS NULL AND u.is_active = 1
+         ORDER BY u.name`,
         [userId]
       );
-      const [assistants] = await pool.execute(
-        `SELECT id, name, email, phone FROM users WHERE role_id = ? AND deleted_at IS NULL AND is_active = 1`,
-        [ROLES.ASSISTANT_DOCTOR]
-      );
-      const byId = new Map((assigned || []).map((r) => [r.id, r]));
-      (assistants || []).forEach((a) => { if (!byId.has(a.id)) byId.set(a.id, a); });
-      const merged = Array.from(byId.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      return res.json({ success: true, data: merged });
+      const data = (assigned || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      return res.json({ success: true, data });
     }
     if (roleId === ROLES.ADMIN || roleId === ROLES.DOCTOR) {
       const [rows] = await pool.execute(

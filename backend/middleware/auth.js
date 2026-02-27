@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/database');
+const { ROLES } = require('../config/roles');
 
 /**
  * Verify JWT and attach user to req.user
@@ -33,6 +34,14 @@ const authenticate = async (req, res, next) => {
     }
     if (!user.is_active) {
       return res.status(401).json({ success: false, message: 'Account is inactive' });
+    }
+
+    // Backfill: if receptionist/assistant has assigned_admin_id but no receptionist_doctors rows, data would not show; sync once
+    if ((user.role_id === ROLES.RECEPTIONIST || user.role_id === ROLES.ASSISTANT_DOCTOR) && user.assigned_admin_id) {
+      const [rd] = await pool.execute('SELECT 1 FROM receptionist_doctors WHERE receptionist_id = ? LIMIT 1', [user.id]);
+      if (!rd.length) {
+        await pool.execute('INSERT IGNORE INTO receptionist_doctors (receptionist_id, doctor_id) VALUES (?, ?)', [user.id, user.assigned_admin_id]);
+      }
     }
 
     req.user = {

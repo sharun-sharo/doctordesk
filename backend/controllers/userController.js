@@ -178,8 +178,8 @@ async function update(req, res, next) {
       updates.push('password = ?');
       params.push(await bcrypt.hash(password, 12));
     }
-    // Super Admin can assign receptionist/assistant doctor to one or more doctors
-    if ((user.role_id === ROLES.RECEPTIONIST || user.role_id === ROLES.ASSISTANT_DOCTOR) && req.user.roleId === ROLES.SUPER_ADMIN) {
+    // Super Admin or Admin can assign receptionist/assistant doctor to one or more doctors (receptionist_doctors drives data visibility)
+    if ((user.role_id === ROLES.RECEPTIONIST || user.role_id === ROLES.ASSISTANT_DOCTOR) && (req.user.roleId === ROLES.SUPER_ADMIN || req.user.roleId === ROLES.ADMIN)) {
       if (Array.isArray(assigned_doctor_ids)) {
         await pool.execute('DELETE FROM receptionist_doctors WHERE receptionist_id = ?', [id]);
         const ids = assigned_doctor_ids.filter((v) => Number.isInteger(Number(v)) && Number(v) >= 1);

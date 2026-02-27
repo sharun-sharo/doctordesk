@@ -11,6 +11,7 @@ const reportRoutes = require('./reportRoutes');
 const activityRoutes = require('./activityRoutes');
 const subscriptionRoutes = require('./subscriptionRoutes');
 const settingsRoutes = require('./settingsRoutes');
+const internalRoutes = require('./internalRoutes');
 
 const router = express.Router();
 
@@ -26,5 +27,6 @@ router.use('/reports', reportRoutes);
 router.use('/activity', activityRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/internal', internalRoutes);
 
 module.exports = router;

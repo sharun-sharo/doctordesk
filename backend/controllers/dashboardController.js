@@ -37,17 +37,20 @@ async function getStats(req, res, next) {
       patientScope.params
     );
 
-    let upcomingSql = `SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
-       AND status = 'scheduled' AND appointment_date >= CURDATE()`;
-    let todaySql = `SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
-       AND appointment_date = CURDATE() AND status IN ('scheduled','completed')`;
+    // Only count appointments whose patient is not deleted (match appointments list behavior)
+    let upcomingSql = `SELECT COUNT(*) AS total FROM appointments a
+       INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
+       WHERE a.deleted_at IS NULL AND a.status = 'scheduled' AND a.appointment_date >= CURDATE()`;
+    let todaySql = `SELECT COUNT(*) AS total FROM appointments a
+       INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
+       WHERE a.deleted_at IS NULL AND a.appointment_date = CURDATE() AND a.status IN ('scheduled','completed')`;
     const appointmentParams = doctorId != null ? [doctorId] : (isReceptionistOrAssistant ? [userId] : []);
     if (doctorId != null) {
-      upcomingSql += ' AND doctor_id = ?';
-      todaySql += ' AND doctor_id = ?';
+      upcomingSql += ' AND a.doctor_id = ?';
+      todaySql += ' AND a.doctor_id = ?';
     } else if (isReceptionistOrAssistant) {
-      upcomingSql += receptionistFilter;
-      todaySql += receptionistFilter;
+      upcomingSql += receptionistFilter.replace('doctor_id', 'a.doctor_id');
+      todaySql += receptionistFilter.replace('doctor_id', 'a.doctor_id');
     }
     const [appointmentsCount] = await pool.execute(upcomingSql, appointmentParams);
     const [todayAppointments] = await pool.execute(todaySql, appointmentParams);
@@ -66,12 +69,13 @@ async function getStats(req, res, next) {
     const [revenue] = await pool.execute(revenueQuery, revenueParams);
 
     let appointmentsQuery = `
-      SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
-      AND appointment_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`;
+      SELECT COUNT(*) AS total FROM appointments a
+      INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
+      WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`;
     if (isDoctorOrAdmin) {
-      appointmentsQuery += ' AND doctor_id = ?';
+      appointmentsQuery += ' AND a.doctor_id = ?';
     } else if (isReceptionistOrAssistant) {
-      appointmentsQuery += receptionistFilter;
+      appointmentsQuery += receptionistFilter.replace('doctor_id', 'a.doctor_id');
     }
     const [last30Appointments] = await pool.execute(
       appointmentsQuery,

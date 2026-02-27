@@ -11,9 +11,10 @@ function getPatientScopeForDashboard(roleId, userId, assignedAdminId = null) {
     };
   }
   if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
+    // Include patients created by assigned doctor (e.g. CSV upload) so dashboard count matches patient list.
     return {
-      condition: ' AND (p.id IN (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))) OR p.created_by = ?)',
-      params: [userId, assignedAdminId, assignedAdminId, userId],
+      condition: ' AND (p.id IN (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))) OR p.created_by = ? OR (p.created_by = ? AND ? IS NOT NULL))',
+      params: [userId, assignedAdminId, assignedAdminId, userId, assignedAdminId, assignedAdminId],
     };
   }
   return { condition: ' AND 0 = 1', params: [] };

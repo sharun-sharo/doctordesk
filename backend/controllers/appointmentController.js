@@ -8,7 +8,7 @@ async function list(req, res, next) {
     const { doctor_id, patient_id, status, date_from, date_to, page = 1, limit = 20 } = req.query;
     const perPage = Math.min(500, Math.max(1, parseInt(limit, 10) || 20));
     const offset = (Math.max(0, (Math.max(1, parseInt(page, 10) || 1) - 1)) * perPage) | 0;
-    const conditions = ['a.deleted_at IS NULL'];
+    const conditions = ['a.deleted_at IS NULL', 'p.id IS NOT NULL'];
     const params = [];
 
     if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {

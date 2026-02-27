@@ -27,6 +27,22 @@ async function getClinicBusinessSettings() {
   }
 }
 
+/** Create clinic_settings table and default row if missing (e.g. in production). Safe to call repeatedly. */
+async function ensureClinicSettingsTable() {
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS clinic_settings (
+      id int unsigned NOT NULL AUTO_INCREMENT,
+      address text,
+      phone varchar(50) DEFAULT NULL,
+      email varchar(255) DEFAULT NULL,
+      gstin varchar(50) DEFAULT NULL,
+      updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.execute('INSERT IGNORE INTO clinic_settings (id) VALUES (1)');
+}
+
 async function getSettings(req, res, next) {
   try {
     const filename = getClinicLogoFilename();
@@ -63,6 +79,7 @@ async function uploadLogo(req, res, next) {
 
 async function updateBusinessDetails(req, res, next) {
   try {
+    await ensureClinicSettingsTable();
     const { address, phone, email, gstin } = req.body;
     await pool.execute(
       `UPDATE clinic_settings SET address = ?, phone = ?, email = ?, gstin = ? WHERE id = 1`,

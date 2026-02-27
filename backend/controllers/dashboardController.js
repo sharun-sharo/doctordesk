@@ -1,6 +1,24 @@
 const { pool } = require('../config/database');
 const { ROLES } = require('../config/roles');
 
+/** Patient scope for dashboard counts/charts: same as patient list (assigned doctors only). */
+function getPatientScopeForDashboard(roleId, userId) {
+  if (roleId === ROLES.SUPER_ADMIN) return { condition: '', params: [] };
+  if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
+    return {
+      condition: ' AND (p.id IN (SELECT patient_id FROM appointments WHERE doctor_id = ? AND deleted_at IS NULL) OR p.created_by = ?)',
+      params: [userId, userId],
+    };
+  }
+  if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
+    return {
+      condition: ' AND (p.id IN (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)) OR p.created_by = ?)',
+      params: [userId, userId],
+    };
+  }
+  return { condition: ' AND 0 = 1', params: [] };
+}
+
 async function getStats(req, res, next) {
   try {
     const userId = req.user.id;
@@ -13,8 +31,10 @@ async function getStats(req, res, next) {
       ? ' AND doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)'
       : '';
 
+    const patientScope = getPatientScopeForDashboard(roleId, userId);
     const [patientsCount] = await pool.execute(
-      'SELECT COUNT(*) AS total FROM patients WHERE deleted_at IS NULL'
+      `SELECT COUNT(*) AS total FROM patients p WHERE p.deleted_at IS NULL${patientScope.condition}`,
+      patientScope.params
     );
 
     let upcomingSql = `SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
@@ -195,12 +215,15 @@ async function getRevenueChart(req, res, next) {
 async function getPatientChart(req, res, next) {
   try {
     const months = parseInt(req.query.months, 10) || 6;
+    const roleId = req.user.roleId;
+    const userId = req.user.id;
+    const patientScope = getPatientScopeForDashboard(roleId, userId);
     const [rows] = await pool.execute(
-      `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS count
-       FROM patients WHERE deleted_at IS NULL
-       AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
-       GROUP BY DATE_FORMAT(created_at, '%Y-%m') ORDER BY month`,
-      [months]
+      `SELECT DATE_FORMAT(p.created_at, '%Y-%m') AS month, COUNT(*) AS count
+       FROM patients p WHERE p.deleted_at IS NULL
+       AND p.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)${patientScope.condition}
+       GROUP BY DATE_FORMAT(p.created_at, '%Y-%m') ORDER BY month`,
+      [months, ...patientScope.params]
     );
     res.json({
       success: true,
@@ -230,10 +253,12 @@ async function getMetrics(req, res, next) {
       baseParams
     );
 
-    // New patients this month (created this month)
+    // New patients this month (created this month, in scope)
+    const newPatientScope = getPatientScopeForDashboard(roleId, userId);
     const [newPatientsThisMonth] = await pool.execute(
-      `SELECT COUNT(*) AS total FROM patients WHERE deleted_at IS NULL
-       AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`
+      `SELECT COUNT(*) AS total FROM patients p WHERE p.deleted_at IS NULL
+       AND p.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${newPatientScope.condition}`,
+      newPatientScope.params
     );
 
     // Returning patients (2+ appointments ever)
@@ -358,12 +383,15 @@ async function getMetrics(req, res, next) {
 async function getWeeklyPatientTrend(req, res, next) {
   try {
     const weeks = parseInt(req.query.weeks, 10) || 4;
+    const roleId = req.user.roleId;
+    const userId = req.user.id;
+    const patientScope = getPatientScopeForDashboard(roleId, userId);
     const [rows] = await pool.execute(
-      `SELECT YEARWEEK(created_at, 3) AS week_num, MIN(created_at) AS week_start, COUNT(*) AS count
-       FROM patients WHERE deleted_at IS NULL
-       AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? WEEK)
-       GROUP BY YEARWEEK(created_at, 3) ORDER BY week_num`,
-      [weeks]
+      `SELECT YEARWEEK(p.created_at, 3) AS week_num, MIN(p.created_at) AS week_start, COUNT(*) AS count
+       FROM patients p WHERE p.deleted_at IS NULL
+       AND p.created_at >= DATE_SUB(CURDATE(), INTERVAL ? WEEK)${patientScope.condition}
+       GROUP BY YEARWEEK(p.created_at, 3) ORDER BY week_num`,
+      [weeks, ...patientScope.params]
     );
     res.json({
       success: true,

@@ -5,6 +5,32 @@ const PDFDocument = require('pdfkit');
 const { ROLES } = require('../config/roles');
 const { getClinicLogoPath, getClinicBusinessSettings } = require('./settingsController');
 
+/** Returns true if the user can access the given invoice (by id). */
+async function canAccessInvoice(invoiceId, roleId, userId) {
+  const [rows] = await pool.execute(
+    `SELECT i.id, i.appointment_id, i.created_by, a.doctor_id AS appointment_doctor_id
+     FROM invoices i
+     LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL
+     WHERE i.id = ? AND i.deleted_at IS NULL`,
+    [invoiceId]
+  );
+  if (!rows || !rows.length) return false;
+  const r = rows[0];
+  if (roleId === ROLES.SUPER_ADMIN) return true;
+  if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
+    return r.appointment_id == null || r.appointment_doctor_id === userId;
+  }
+  if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
+    if (r.appointment_id == null) return r.created_by === userId;
+    const [assigned] = await pool.execute(
+      'SELECT 1 FROM receptionist_doctors WHERE receptionist_id = ? AND doctor_id = ? LIMIT 1',
+      [userId, r.appointment_doctor_id]
+    );
+    return (assigned && assigned.length) > 0;
+  }
+  return false;
+}
+
 async function list(req, res, next) {
   try {
     const { patient_id, payment_status, page = 1, limit = 20 } = req.query;
@@ -20,12 +46,15 @@ async function list(req, res, next) {
       conditions.push('i.payment_status = ?');
       params.push(payment_status);
     }
-    const join = (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN)
-      ? ' LEFT JOIN appointments a ON i.appointment_id = a.id'
-      : '';
-    if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN)) {
+    let join = '';
+    if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
+      join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
       conditions.push('(a.id IS NULL OR a.doctor_id = ?)');
       params.push(req.user.id);
+    } else if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
+      join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
+      conditions.push('(i.appointment_id IS NULL AND i.created_by = ?) OR (a.id IS NOT NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?))');
+      params.push(req.user.id, req.user.id);
     }
     const where = conditions.join(' AND ');
     const allParams = [...params];
@@ -64,6 +93,10 @@ async function getOne(req, res, next) {
       [req.params.id]
     );
     if (!inv.length) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+    const allowed = await canAccessInvoice(Number(req.params.id), req.user.roleId, req.user.id);
+    if (!allowed) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
     const [items] = await pool.execute(
@@ -210,6 +243,10 @@ async function downloadPdf(req, res, next) {
       [req.params.id]
     );
     if (!inv.length) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+    const allowed = await canAccessInvoice(Number(req.params.id), req.user.roleId, req.user.id);
+    if (!allowed) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
     const [items] = await pool.execute(
@@ -390,6 +427,10 @@ async function destroy(req, res, next) {
       [id]
     );
     if (!existing.length) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+    const allowed = await canAccessInvoice(Number(id), req.user.roleId, req.user.id);
+    if (!allowed) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
     await pool.execute('UPDATE invoices SET deleted_at = NOW() WHERE id = ?', [id]);

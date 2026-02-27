@@ -2,9 +2,68 @@ const { pool } = require('../config/database');
 const { logActivity } = require('../utils/activityLogger');
 const { ROLES } = require('../config/roles');
 
+/**
+ * Returns SQL condition and params to restrict patients to the current user's scope.
+ * - SUPER_ADMIN: no restriction (sees all).
+ * - ADMIN/DOCTOR: patients with at least one appointment for this doctor, or created_by this user.
+ * - RECEPTIONIST/ASSISTANT_DOCTOR: patients with appointment for an assigned doctor, or created_by this user.
+ */
+function getPatientScopeCondition(roleId, userId) {
+  if (roleId === ROLES.SUPER_ADMIN) {
+    return { condition: '', params: [] };
+  }
+  if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
+    return {
+      condition: ' AND (p.id IN (SELECT patient_id FROM appointments WHERE doctor_id = ? AND deleted_at IS NULL) OR p.created_by = ?)',
+      params: [userId, userId],
+    };
+  }
+  if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
+    return {
+      condition: ' AND (p.id IN (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)) OR p.created_by = ?)',
+      params: [userId, userId],
+    };
+  }
+  // Fallback: restrict to nothing (no rows) if unknown role
+  return { condition: ' AND 0 = 1', params: [] };
+}
+
+/**
+ * Check if the current user can access the given patient (by id). Resolves true/false.
+ */
+async function canAccessPatient(patientId, roleId, userId) {
+  if (roleId === ROLES.SUPER_ADMIN) return true;
+  if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
+    const [rows] = await pool.execute(
+      `SELECT 1 FROM patients p WHERE p.id = ? AND p.deleted_at IS NULL
+       AND (p.created_by = ? OR EXISTS (SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.deleted_at IS NULL AND a.doctor_id = ?))`,
+      [patientId, userId, userId]
+    );
+    return (rows && rows.length) > 0;
+  }
+  if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
+    const [rows] = await pool.execute(
+      `SELECT 1 FROM patients p WHERE p.id = ? AND p.deleted_at IS NULL
+       AND (p.created_by = ? OR EXISTS (
+         SELECT 1 FROM appointments a
+         WHERE a.patient_id = p.id AND a.deleted_at IS NULL
+         AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)
+       ))`,
+      [patientId, userId, userId]
+    );
+    return (rows && rows.length) > 0;
+  }
+  return false;
+}
+
 function buildPatientWhere(query, roleId, userId) {
   const conditions = ['p.deleted_at IS NULL'];
   const params = [];
+  const scope = getPatientScopeCondition(roleId, userId);
+  if (scope.condition) {
+    conditions.push(scope.condition.trim().replace(/^\s*AND\s+/i, ''));
+    params.push(...scope.params);
+  }
   if (query.search && query.search.trim()) {
     const term = query.search.trim();
     const likeTerm = `%${term}%`;
@@ -81,6 +140,10 @@ async function getOne(req, res, next) {
     if (!rows.length) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
+    const allowed = await canAccessPatient(Number(req.params.id), req.user.roleId, req.user.id);
+    if (!allowed) {
+      return res.status(404).json({ success: false, message: 'Patient not found' });
+    }
     res.json({ success: true, data: rows[0] });
   } catch (err) {
     next(err);
@@ -144,6 +207,10 @@ async function update(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
+    const allowed = await canAccessPatient(Number(id), req.user.roleId, req.user.id);
+    if (!allowed) {
+      return res.status(404).json({ success: false, message: 'Patient not found' });
+    }
     const {
       name,
       email,
@@ -189,6 +256,10 @@ async function remove(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
+    const allowed = await canAccessPatient(Number(id), req.user.roleId, req.user.id);
+    if (!allowed) {
+      return res.status(404).json({ success: false, message: 'Patient not found' });
+    }
     await pool.execute('UPDATE patients SET deleted_at = NOW() WHERE id = ?', [id]);
     await logActivity({ userId: req.user.id, action: 'delete', entityType: 'patient', entityId: id, req });
     res.json({ success: true, message: 'Patient deleted' });
@@ -205,6 +276,10 @@ async function getMedicalHistory(req, res, next) {
       [patientId]
     );
     if (!patient.length) {
+      return res.status(404).json({ success: false, message: 'Patient not found' });
+    }
+    const allowed = await canAccessPatient(Number(patientId), req.user.roleId, req.user.id);
+    if (!allowed) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
     const [appointments] = await pool.execute(

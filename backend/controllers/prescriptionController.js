@@ -24,6 +24,20 @@ function parseMedicines(medicines) {
   return Array.isArray(medicines) ? medicines : [];
 }
 
+/** Returns true if the user can access prescriptions for the given doctor_id (e.g. prescription.doctor_id). */
+async function canAccessPrescriptionByDoctor(doctorId, roleId, userId) {
+  if (roleId === ROLES.SUPER_ADMIN) return true;
+  if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) return doctorId === userId;
+  if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
+    const [rows] = await pool.execute(
+      'SELECT 1 FROM receptionist_doctors WHERE receptionist_id = ? AND doctor_id = ? LIMIT 1',
+      [userId, doctorId]
+    );
+    return (rows && rows.length) > 0;
+  }
+  return false;
+}
+
 async function list(req, res, next) {
   try {
     const { patient_id, doctor_id, page = 1, limit = 20 } = req.query;
@@ -31,17 +45,21 @@ async function list(req, res, next) {
     const offset = (Math.max(0, (Math.max(1, parseInt(page, 10) || 1) - 1)) * perPage) | 0;
     const conditions = [];
     const params = [];
-    if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN)) {
+    if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
       conditions.push('pr.doctor_id = ?');
       params.push(req.user.id);
+    } else if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
+      if (doctor_id) {
+        conditions.push('pr.doctor_id = ?');
+        params.push(doctor_id);
+      } else {
+        conditions.push('pr.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)');
+        params.push(req.user.id);
+      }
     }
     if (patient_id) {
       conditions.push('pr.patient_id = ?');
       params.push(patient_id);
-    }
-    if (doctor_id && (req.user.roleId !== ROLES.DOCTOR && req.user.roleId !== ROLES.ADMIN)) {
-      conditions.push('pr.doctor_id = ?');
-      params.push(doctor_id);
     }
     conditions.push('pr.deleted_at IS NULL');
     const where = conditions.join(' AND ');
@@ -89,6 +107,10 @@ async function getOne(req, res, next) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
     const r = rows[0];
+    const allowed = await canAccessPrescriptionByDoctor(r.doctor_id, req.user.roleId, req.user.id);
+    if (!allowed) {
+      return res.status(404).json({ success: false, message: 'Prescription not found' });
+    }
     r.medicines = parseMedicines(r.medicines);
     let attRows = [];
     try {
@@ -120,8 +142,9 @@ async function getAttachment(req, res, next) {
         return res.status(404).json({ success: false, message: 'Attachment not found' });
       }
       const a = attRows[0];
-      if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) && a.doctor_id !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'Not your prescription' });
+      const allowed = await canAccessPrescriptionByDoctor(a.doctor_id, req.user.roleId, req.user.id);
+      if (!allowed) {
+        return res.status(404).json({ success: false, message: 'Attachment not found' });
       }
       const filePath = path.join(UPLOAD_DIR, a.file_path);
       if (!fs.existsSync(filePath)) {
@@ -138,8 +161,9 @@ async function getAttachment(req, res, next) {
       return res.status(404).json({ success: false, message: 'No attachment' });
     }
     const a = attRows[0];
-    if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) && a.doctor_id !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'Not your prescription' });
+    const allowed = await canAccessPrescriptionByDoctor(a.doctor_id, req.user.roleId, req.user.id);
+    if (!allowed) {
+      return res.status(404).json({ success: false, message: 'No attachment' });
     }
     const filePath = path.join(UPLOAD_DIR, a.file_path);
     if (!fs.existsSync(filePath)) {
@@ -218,8 +242,9 @@ async function update(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
-    if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) && existing[0].doctor_id !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'Not your prescription' });
+    const allowed = await canAccessPrescriptionByDoctor(existing[0].doctor_id, req.user.roleId, req.user.id);
+    if (!allowed) {
+      return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
     const { diagnosis, notes, medicines } = req.body;
     const updates = [];
@@ -278,8 +303,9 @@ async function deleteAttachment(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
-    if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) && existing[0].doctor_id !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'Not your prescription' });
+    const allowed = await canAccessPrescriptionByDoctor(existing[0].doctor_id, req.user.roleId, req.user.id);
+    if (!allowed) {
+      return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
     const [att] = await pool.execute(
       'SELECT id, file_path FROM prescription_attachments WHERE prescription_id = ? AND id = ?',
@@ -307,8 +333,9 @@ async function destroy(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
-    if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) && existing[0].doctor_id !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'Not your prescription' });
+    const allowed = await canAccessPrescriptionByDoctor(existing[0].doctor_id, req.user.roleId, req.user.id);
+    if (!allowed) {
+      return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
     await pool.execute('UPDATE prescriptions SET deleted_at = NOW() WHERE id = ?', [id]);
     await logActivity({ userId: req.user.id, action: 'delete', entityType: 'prescription', entityId: id, req });

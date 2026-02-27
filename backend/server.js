@@ -62,8 +62,14 @@ app.use(API_PREFIX, limiter);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// Health check
-app.get('/health', (req, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));
+// Health check (include feature flag so you can confirm deployed code has assigned_admin_id fallback)
+app.get('/health', (req, res) =>
+  res.json({
+    ok: true,
+    timestamp: new Date().toISOString(),
+    features: { assignedAdminIdFallback: true },
+  })
+);
 
 // Static uploads (e.g. clinic logo at /api/v1/uploads/clinic/logo.png)
 app.use(`${API_PREFIX}/uploads`, express.static(path.join(process.cwd(), 'uploads')));

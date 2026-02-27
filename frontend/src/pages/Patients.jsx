@@ -186,6 +186,14 @@ export default function Patients() {
 
   const columns = [
     {
+      key: 'sno',
+      header: 'S.No',
+      headerClassName: 'w-16 text-center text-slate-500 font-medium normal-case',
+      cellClassName: 'w-16 text-center text-slate-500 font-medium',
+      render: (_, __, rowIndex) =>
+        (pagination.page - 1) * pagination.limit + rowIndex + 1,
+    },
+    {
       key: 'patient_id',
       header: 'Patient ID',
       render: (_, row) => (

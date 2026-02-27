@@ -38,7 +38,7 @@ export default function DataTable({
                     key={col.key}
                     className={`px-3 py-3 sm:px-5 sm:py-4 text-xs font-semibold uppercase tracking-wider text-slate-600 ${
                       stickyHeader ? 'sticky top-0 z-10 bg-slate-50/95 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]' : ''
-                    } ${isSortable ? 'cursor-pointer select-none' : ''}`}
+                    } ${isSortable ? 'cursor-pointer select-none' : ''} ${col.headerClassName || ''}`}
                     style={col.width ? { width: col.width } : undefined}
                     onClick={isSortable ? () => handleSort(col) : undefined}
                     onKeyDown={
@@ -99,9 +99,9 @@ export default function DataTable({
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className="px-3 py-3 text-sm text-slate-800 sm:px-5 sm:py-4"
+                      className={`px-3 py-3 text-sm text-slate-800 sm:px-5 sm:py-4 ${col.cellClassName || ''}`}
                     >
-                      {col.render ? col.render(row[col.key], row) : row[col.key]}
+                      {col.render ? col.render(row[col.key], row, rowIndex) : row[col.key]}
                     </td>
                   ))}
                 </tr>

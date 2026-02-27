@@ -24,8 +24,8 @@ function parseMedicines(medicines) {
   return Array.isArray(medicines) ? medicines : [];
 }
 
-/** Returns true if the user can access prescriptions for the given doctor_id (e.g. prescription.doctor_id). */
-async function canAccessPrescriptionByDoctor(doctorId, roleId, userId) {
+/** Returns true if the user can access prescriptions for the given doctor_id (e.g. prescription.doctor_id). assignedAdminId fallback when receptionist_doctors is empty. */
+async function canAccessPrescriptionByDoctor(doctorId, roleId, userId, assignedAdminId = null) {
   if (roleId === ROLES.SUPER_ADMIN) return true;
   if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) return doctorId === userId;
   if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
@@ -33,7 +33,7 @@ async function canAccessPrescriptionByDoctor(doctorId, roleId, userId) {
       'SELECT 1 FROM receptionist_doctors WHERE receptionist_id = ? AND doctor_id = ? LIMIT 1',
       [userId, doctorId]
     );
-    return (rows && rows.length) > 0;
+    return (rows && rows.length) > 0 || (assignedAdminId != null && Number(doctorId) === Number(assignedAdminId));
   }
   return false;
 }
@@ -53,8 +53,8 @@ async function list(req, res, next) {
         conditions.push('pr.doctor_id = ?');
         params.push(doctor_id);
       } else {
-        conditions.push('pr.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)');
-        params.push(req.user.id);
+        conditions.push('(pr.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (pr.doctor_id = ? AND ? IS NOT NULL))');
+        params.push(req.user.id, req.user.assignedAdminId, req.user.assignedAdminId);
       }
     }
     if (patient_id) {
@@ -107,7 +107,7 @@ async function getOne(req, res, next) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
     const r = rows[0];
-    const allowed = await canAccessPrescriptionByDoctor(r.doctor_id, req.user.roleId, req.user.id);
+    const allowed = await canAccessPrescriptionByDoctor(r.doctor_id, req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
@@ -142,7 +142,7 @@ async function getAttachment(req, res, next) {
         return res.status(404).json({ success: false, message: 'Attachment not found' });
       }
       const a = attRows[0];
-      const allowed = await canAccessPrescriptionByDoctor(a.doctor_id, req.user.roleId, req.user.id);
+      const allowed = await canAccessPrescriptionByDoctor(a.doctor_id, req.user.roleId, req.user.id, req.user.assignedAdminId);
       if (!allowed) {
         return res.status(404).json({ success: false, message: 'Attachment not found' });
       }
@@ -242,7 +242,7 @@ async function update(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
-    const allowed = await canAccessPrescriptionByDoctor(existing[0].doctor_id, req.user.roleId, req.user.id);
+    const allowed = await canAccessPrescriptionByDoctor(existing[0].doctor_id, req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
@@ -303,7 +303,7 @@ async function deleteAttachment(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
-    const allowed = await canAccessPrescriptionByDoctor(existing[0].doctor_id, req.user.roleId, req.user.id);
+    const allowed = await canAccessPrescriptionByDoctor(existing[0].doctor_id, req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
@@ -333,7 +333,7 @@ async function destroy(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }
-    const allowed = await canAccessPrescriptionByDoctor(existing[0].doctor_id, req.user.roleId, req.user.id);
+    const allowed = await canAccessPrescriptionByDoctor(existing[0].doctor_id, req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Prescription not found' });
     }

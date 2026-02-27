@@ -6,9 +6,9 @@ const { ROLES } = require('../config/roles');
  * Returns SQL condition and params to restrict patients to the current user's scope.
  * - SUPER_ADMIN: no restriction (sees all).
  * - ADMIN/DOCTOR: patients with at least one appointment for this doctor, or created_by this user.
- * - RECEPTIONIST/ASSISTANT_DOCTOR: patients with appointment for an assigned doctor, or created_by this user.
+ * - RECEPTIONIST/ASSISTANT_DOCTOR: patients with appointment for an assigned doctor (receptionist_doctors or assigned_admin_id fallback), or created_by this user.
  */
-function getPatientScopeCondition(roleId, userId) {
+function getPatientScopeCondition(roleId, userId, assignedAdminId = null) {
   if (roleId === ROLES.SUPER_ADMIN) {
     return { condition: '', params: [] };
   }
@@ -19,9 +19,10 @@ function getPatientScopeCondition(roleId, userId) {
     };
   }
   if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
+    // Include receptionist_doctors OR assigned_admin_id so staff see data even if table wasn't populated
     return {
-      condition: ' AND (p.id IN (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)) OR p.created_by = ?)',
-      params: [userId, userId],
+      condition: ' AND (p.id IN (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))) OR p.created_by = ?)',
+      params: [userId, assignedAdminId, assignedAdminId, userId],
     };
   }
   // Fallback: restrict to nothing (no rows) if unknown role
@@ -31,7 +32,7 @@ function getPatientScopeCondition(roleId, userId) {
 /**
  * Check if the current user can access the given patient (by id). Resolves true/false.
  */
-async function canAccessPatient(patientId, roleId, userId) {
+async function canAccessPatient(patientId, roleId, userId, assignedAdminId = null) {
   if (roleId === ROLES.SUPER_ADMIN) return true;
   if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
     const [rows] = await pool.execute(
@@ -47,19 +48,19 @@ async function canAccessPatient(patientId, roleId, userId) {
        AND (p.created_by = ? OR EXISTS (
          SELECT 1 FROM appointments a
          WHERE a.patient_id = p.id AND a.deleted_at IS NULL
-         AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)
+         AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))
        ))`,
-      [patientId, userId, userId]
+      [patientId, userId, userId, assignedAdminId, assignedAdminId]
     );
     return (rows && rows.length) > 0;
   }
   return false;
 }
 
-function buildPatientWhere(query, roleId, userId) {
+function buildPatientWhere(query, roleId, userId, assignedAdminId = null) {
   const conditions = ['p.deleted_at IS NULL'];
   const params = [];
-  const scope = getPatientScopeCondition(roleId, userId);
+  const scope = getPatientScopeCondition(roleId, userId, assignedAdminId);
   if (scope.condition) {
     conditions.push(scope.condition.trim().replace(/^\s*AND\s+/i, ''));
     params.push(...scope.params);
@@ -108,7 +109,7 @@ async function list(req, res, next) {
     const { search, gender, age_min, age_max, page = 1, limit = 20, sort = 'created_at', order = 'desc' } = req.query;
     const perPage = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
     const offset = (Math.max(0, (Math.max(1, parseInt(page, 10) || 1) - 1)) * perPage) | 0;
-    const { where, params } = buildPatientWhere({ search, gender, age_min, age_max }, req.user.roleId, req.user.id);
+    const { where, params } = buildPatientWhere({ search, gender, age_min, age_max }, req.user.roleId, req.user.id, req.user.assignedAdminId);
     const orderBy = getPatientOrder(sort, order);
 
     const [rows] = await pool.execute(
@@ -140,7 +141,7 @@ async function getOne(req, res, next) {
     if (!rows.length) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
-    const allowed = await canAccessPatient(Number(req.params.id), req.user.roleId, req.user.id);
+    const allowed = await canAccessPatient(Number(req.params.id), req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
@@ -207,7 +208,7 @@ async function update(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
-    const allowed = await canAccessPatient(Number(id), req.user.roleId, req.user.id);
+    const allowed = await canAccessPatient(Number(id), req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
@@ -256,7 +257,7 @@ async function remove(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
-    const allowed = await canAccessPatient(Number(id), req.user.roleId, req.user.id);
+    const allowed = await canAccessPatient(Number(id), req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
@@ -278,7 +279,7 @@ async function getMedicalHistory(req, res, next) {
     if (!patient.length) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }
-    const allowed = await canAccessPatient(Number(patientId), req.user.roleId, req.user.id);
+    const allowed = await canAccessPatient(Number(patientId), req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Patient not found' });
     }

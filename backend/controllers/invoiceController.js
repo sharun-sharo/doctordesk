@@ -5,8 +5,8 @@ const PDFDocument = require('pdfkit');
 const { ROLES } = require('../config/roles');
 const { getClinicLogoPath, getClinicBusinessSettings } = require('./settingsController');
 
-/** Returns true if the user can access the given invoice (by id). */
-async function canAccessInvoice(invoiceId, roleId, userId) {
+/** Returns true if the user can access the given invoice (by id). assignedAdminId fallback when receptionist_doctors is empty. */
+async function canAccessInvoice(invoiceId, roleId, userId, assignedAdminId = null) {
   const [rows] = await pool.execute(
     `SELECT i.id, i.appointment_id, i.created_by, a.doctor_id AS appointment_doctor_id
      FROM invoices i
@@ -26,7 +26,7 @@ async function canAccessInvoice(invoiceId, roleId, userId) {
       'SELECT 1 FROM receptionist_doctors WHERE receptionist_id = ? AND doctor_id = ? LIMIT 1',
       [userId, r.appointment_doctor_id]
     );
-    return (assigned && assigned.length) > 0;
+    return (assigned && assigned.length) > 0 || (assignedAdminId != null && Number(r.appointment_doctor_id) === Number(assignedAdminId));
   }
   return false;
 }
@@ -53,8 +53,8 @@ async function list(req, res, next) {
       params.push(req.user.id);
     } else if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
       join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
-      conditions.push('(i.appointment_id IS NULL AND i.created_by = ?) OR (a.id IS NOT NULL AND a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?))');
-      params.push(req.user.id, req.user.id);
+      conditions.push('(i.appointment_id IS NULL AND i.created_by = ?) OR (a.id IS NOT NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)))');
+      params.push(req.user.id, req.user.id, req.user.assignedAdminId, req.user.assignedAdminId);
     }
     const where = conditions.join(' AND ');
     const allParams = [...params];
@@ -95,7 +95,7 @@ async function getOne(req, res, next) {
     if (!inv.length) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
-    const allowed = await canAccessInvoice(Number(req.params.id), req.user.roleId, req.user.id);
+    const allowed = await canAccessInvoice(Number(req.params.id), req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
@@ -245,7 +245,7 @@ async function downloadPdf(req, res, next) {
     if (!inv.length) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
-    const allowed = await canAccessInvoice(Number(req.params.id), req.user.roleId, req.user.id);
+    const allowed = await canAccessInvoice(Number(req.params.id), req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
@@ -429,7 +429,7 @@ async function destroy(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
-    const allowed = await canAccessInvoice(Number(id), req.user.roleId, req.user.id);
+    const allowed = await canAccessInvoice(Number(id), req.user.roleId, req.user.id, req.user.assignedAdminId);
     if (!allowed) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }

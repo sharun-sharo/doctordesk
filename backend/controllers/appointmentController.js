@@ -19,9 +19,9 @@ async function list(req, res, next) {
       conditions.push('a.doctor_id = ?');
       params.push(doctor_id);
     } else if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
-      // Receptionist/Assistant doctor: only appointments for doctors they are assigned to
-      conditions.push('a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)');
-      params.push(req.user.id);
+      // Receptionist/Assistant doctor: only appointments for doctors they are assigned to (receptionist_doctors or assigned_admin_id fallback)
+      conditions.push('(a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))');
+      params.push(req.user.id, req.user.assignedAdminId, req.user.assignedAdminId);
     } else if (doctor_id) {
       conditions.push('a.doctor_id = ?');
       params.push(doctor_id);
@@ -148,7 +148,8 @@ async function create(req, res, next) {
           'SELECT 1 FROM users WHERE id = ? AND role_id = ? AND deleted_at IS NULL',
           [doctor_id, ROLES.ASSISTANT_DOCTOR]
         );
-        if (!allowed.length && !isAssistant.length) doctor_id = null;
+        const allowedByAdmin = req.user.assignedAdminId && Number(doctor_id) === Number(req.user.assignedAdminId);
+        if (!allowed.length && !isAssistant.length && !allowedByAdmin) doctor_id = null;
       }
       if (!doctor_id && req.user.assignedAdminId) doctor_id = req.user.assignedAdminId;
     }

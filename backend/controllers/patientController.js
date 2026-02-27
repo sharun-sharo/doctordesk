@@ -19,10 +19,11 @@ function getPatientScopeCondition(roleId, userId, assignedAdminId = null) {
     };
   }
   if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
-    // Include receptionist_doctors OR assigned_admin_id so staff see data even if table wasn't populated
+    // Include receptionist_doctors OR assigned_admin_id so staff see data even if table wasn't populated.
+    // Also show patients created by the assigned doctor (e.g. CSV upload) even without appointments.
     return {
-      condition: ' AND (p.id IN (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))) OR p.created_by = ?)',
-      params: [userId, assignedAdminId, assignedAdminId, userId],
+      condition: ' AND (p.id IN (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))) OR p.created_by = ? OR (p.created_by = ? AND ? IS NOT NULL))',
+      params: [userId, assignedAdminId, assignedAdminId, userId, assignedAdminId, assignedAdminId],
     };
   }
   // Fallback: restrict to nothing (no rows) if unknown role
@@ -49,8 +50,8 @@ async function canAccessPatient(patientId, roleId, userId, assignedAdminId = nul
          SELECT 1 FROM appointments a
          WHERE a.patient_id = p.id AND a.deleted_at IS NULL
          AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))
-       ))`,
-      [patientId, userId, userId, assignedAdminId, assignedAdminId]
+       ) OR (p.created_by = ? AND ? IS NOT NULL))`,
+      [patientId, userId, userId, assignedAdminId, assignedAdminId, assignedAdminId, assignedAdminId]
     );
     return (rows && rows.length) > 0;
   }

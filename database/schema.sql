@@ -319,6 +319,21 @@ CREATE TABLE `refresh_tokens` (
   CONSTRAINT `fk_refresh_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- --------------------------------------------------------
+-- Table: clinic_settings (invoice business details, logo reference in uploads/clinic)
+-- --------------------------------------------------------
+DROP TABLE IF EXISTS `clinic_settings`;
+CREATE TABLE `clinic_settings` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `address` text,
+  `phone` varchar(50) DEFAULT NULL,
+  `email` varchar(255) DEFAULT NULL,
+  `gstin` varchar(50) DEFAULT NULL COMMENT 'GST number (optional)',
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT INTO `clinic_settings` (`id`) VALUES (1);
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- Insert default roles

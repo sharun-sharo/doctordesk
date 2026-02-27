@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "seed": "node scripts/seed.js",
     "seed:demo": "node scripts/seedDemoData.js",
-    "migrate": "node scripts/runSchema.js"
+    "migrate": "node scripts/runSchema.js",
+    "ensureClinicSettings": "node scripts/ensureClinicSettings.js"
   },
   "keywords": [
     "clinic",

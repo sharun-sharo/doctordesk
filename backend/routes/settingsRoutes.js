@@ -10,5 +10,6 @@ router.use(staffOnly);
 
 router.get('/', settingsController.getSettings);
 router.post('/logo', clinicLogoUpload, settingsController.uploadLogo);
+router.patch('/business', settingsController.updateBusinessDetails);
 
 module.exports = router;

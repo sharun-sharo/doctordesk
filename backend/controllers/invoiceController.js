@@ -3,7 +3,7 @@ const { generateInvoiceNumber } = require('../utils/invoiceNumber');
 const { logActivity } = require('../utils/activityLogger');
 const PDFDocument = require('pdfkit');
 const { ROLES } = require('../config/roles');
-const { getClinicLogoPath } = require('./settingsController');
+const { getClinicLogoPath, getClinicBusinessSettings } = require('./settingsController');
 
 async function list(req, res, next) {
   try {
@@ -182,7 +182,8 @@ const PDF_MARGIN = 50;
 const PDF_WIDTH = 595.28;
 const PDF_CONTENT = PDF_WIDTH - PDF_MARGIN * 2;
 const CLINIC_NAME = process.env.CLINIC_NAME || 'DoctorDesk';
-const CURRENCY = '₹';
+// Use "Rs." instead of "₹" so PDF renders correctly in all viewers (Helvetica has no rupee glyph).
+const CURRENCY = 'Rs. ';
 
 function formatTime(t) {
   if (!t) return '';
@@ -246,6 +247,21 @@ async function downloadPdf(req, res, next) {
     }
     doc.fontSize(9).fillColor('#64748b').text('Medical Invoice', left, y);
     y += 14;
+    const business = await getClinicBusinessSettings();
+    const hasBusiness = business.address || business.phone || business.email || business.gstin;
+    if (hasBusiness) {
+      const lines = [];
+      if (business.address) lines.push(business.address);
+      const contact = [business.phone, business.email].filter(Boolean).join(' · ');
+      if (contact) lines.push(contact);
+      if (business.gstin) lines.push(`GSTIN: ${business.gstin}`);
+      doc.fontSize(8).fillColor('#64748b');
+      lines.forEach((line) => {
+        doc.text(line, left, y, { width: PDF_CONTENT * 0.6 });
+        y += 12;
+      });
+      y += 6;
+    }
     doc.moveTo(left, y).lineTo(right, y).strokeColor('#e2e8f0').lineWidth(1).stroke();
     y += 16;
 

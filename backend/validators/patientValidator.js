@@ -6,6 +6,7 @@ const createRules = [
   body('phone').trim().notEmpty().withMessage('Phone required'),
   body('custom_patient_id').optional({ values: 'falsy' }).trim().isLength({ max: 64 }).withMessage('Patient ID must be at most 64 characters'),
   body('email').optional({ values: 'falsy' }).isEmail().normalizeEmail(),
+  body('patient_added_on').optional({ values: 'falsy' }).isDate().withMessage('Invalid patient added date'),
   body('date_of_birth').optional({ values: 'falsy' }).isDate().withMessage('Invalid date format'),
   body('gender').optional({ values: 'falsy' }).isIn(['male', 'female', 'other']).withMessage('Invalid gender'),
 ];
@@ -30,6 +31,7 @@ const updateRules = [
     .isLength({ max: 64 })
     .withMessage('Patient ID must be at most 64 characters'),
   body('email').optional({ values: 'falsy' }).isEmail().normalizeEmail().withMessage('Invalid email'),
+  body('patient_added_on').optional({ values: 'falsy' }).isDate().withMessage('Invalid patient added date'),
   body('date_of_birth').optional({ values: 'falsy' }).isDate().withMessage('Invalid date format'),
   body('gender').optional({ values: 'falsy' }).isIn(['male', 'female', 'other']).withMessage('Invalid gender'),
 ];

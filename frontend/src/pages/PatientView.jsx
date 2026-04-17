@@ -57,7 +57,7 @@ export default function PatientView() {
               </dd>
             </div>
             <div><dt className="text-caption text-slate-500">Phone</dt><dd>{patient.phone}</dd></div>
-            <div><dt className="text-caption text-slate-500">Patient Added date</dt><dd>{patient.created_at ? new Date(patient.created_at).toLocaleDateString() : '—'}</dd></div>
+            <div><dt className="text-caption text-slate-500">Patient Added date</dt><dd>{(patient.patient_added_on || patient.created_at) ? new Date(patient.patient_added_on || patient.created_at).toLocaleDateString() : '—'}</dd></div>
             <div><dt className="text-caption text-slate-500">Age</dt><dd>{getAge(patient.date_of_birth)}</dd></div>
             <div><dt className="text-caption text-slate-500">Gender</dt><dd>{patient.gender || '—'}</dd></div>
             <div><dt className="text-caption text-slate-500">Blood group</dt><dd>{patient.blood_group || '—'}</dd></div>

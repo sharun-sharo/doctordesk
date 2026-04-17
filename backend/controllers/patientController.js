@@ -16,6 +16,17 @@ async function ensureCustomPatientIdColumn() {
   if (!rows.length) {
     await pool.execute('ALTER TABLE patients ADD COLUMN custom_patient_id VARCHAR(64) NULL');
   }
+  const [patientAddedOnRows] = await pool.execute(
+    `SELECT 1
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'patients'
+       AND COLUMN_NAME = 'patient_added_on'
+     LIMIT 1`
+  );
+  if (!patientAddedOnRows.length) {
+    await pool.execute('ALTER TABLE patients ADD COLUMN patient_added_on DATE NULL');
+  }
   customPatientIdColumnEnsured = true;
 }
 
@@ -132,7 +143,7 @@ async function list(req, res, next) {
     const orderBy = getPatientOrder(sort, order);
 
     const [rows] = await pool.execute(
-      `SELECT p.id, p.custom_patient_id, p.name, p.email, p.phone, p.date_of_birth, p.gender, p.address, p.blood_group, p.created_at
+      `SELECT p.id, p.custom_patient_id, p.patient_added_on, p.name, p.email, p.phone, p.date_of_birth, p.gender, p.address, p.blood_group, p.created_at
        FROM patients p
        WHERE ${where}
        ORDER BY ${orderBy}
@@ -154,7 +165,7 @@ async function getOne(req, res, next) {
   try {
     await ensureCustomPatientIdColumn();
     const [rows] = await pool.execute(
-      `SELECT id, custom_patient_id, name, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_at
+      `SELECT id, custom_patient_id, patient_added_on, name, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_at
        FROM patients WHERE id = ? AND deleted_at IS NULL`,
       [req.params.id]
     );
@@ -177,6 +188,7 @@ async function create(req, res, next) {
     const {
       name,
       custom_patient_id,
+      patient_added_on,
       email,
       phone,
       date_of_birth,
@@ -197,11 +209,12 @@ async function create(req, res, next) {
       }
     }
     const [result] = await pool.execute(
-      `INSERT INTO patients (name, custom_patient_id, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO patients (name, custom_patient_id, patient_added_on, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name,
         normalizedCustomPatientId || null,
+        patient_added_on || null,
         email || null,
         phone,
         date_of_birth || null,
@@ -214,7 +227,7 @@ async function create(req, res, next) {
       ]
     );
     const [rows] = await pool.execute(
-      'SELECT id, custom_patient_id, name, email, phone, date_of_birth, gender, address, blood_group, created_at FROM patients WHERE id = ?',
+      'SELECT id, custom_patient_id, patient_added_on, name, email, phone, date_of_birth, gender, address, blood_group, created_at FROM patients WHERE id = ?',
       [result.insertId]
     );
     await logActivity({
@@ -249,6 +262,7 @@ async function update(req, res, next) {
     const {
       name,
       custom_patient_id,
+      patient_added_on,
       email,
       phone,
       date_of_birth,
@@ -269,11 +283,12 @@ async function update(req, res, next) {
       }
     }
     await pool.execute(
-      `UPDATE patients SET name=?, custom_patient_id=?, email=?, phone=?, date_of_birth=?, gender=?, address=?, blood_group=?, allergies=?, medical_notes=?
+      `UPDATE patients SET name=?, custom_patient_id=?, patient_added_on=?, email=?, phone=?, date_of_birth=?, gender=?, address=?, blood_group=?, allergies=?, medical_notes=?
        WHERE id = ?`,
       [
         name,
         normalizedCustomPatientId || null,
+        patient_added_on || null,
         email || null,
         phone,
         date_of_birth || null,
@@ -286,7 +301,7 @@ async function update(req, res, next) {
       ]
     );
     const [rows] = await pool.execute(
-      'SELECT id, custom_patient_id, name, email, phone, date_of_birth, gender, address, blood_group, medical_notes, updated_at FROM patients WHERE id = ?',
+      'SELECT id, custom_patient_id, patient_added_on, name, email, phone, date_of_birth, gender, address, blood_group, medical_notes, updated_at FROM patients WHERE id = ?',
       [id]
     );
     await logActivity({ userId: req.user.id, action: 'update', entityType: 'patient', entityId: id, req });
@@ -425,6 +440,8 @@ async function bulkCreate(req, res, next) {
       const email = (row.email || '').trim() || null;
       const customPatientIdRaw = (row.patient_id || row.custom_patient_id || '').trim();
       const customPatientId = customPatientIdRaw || null;
+      const patientAddedOnRaw = (row.date_added_on || row.patient_added_on || '').trim();
+      const patientAddedOn = patientAddedOnRaw || null;
       if (customPatientId) {
         const [existingWithSameCustomId] = await pool.execute(
           'SELECT id FROM patients WHERE custom_patient_id = ? AND deleted_at IS NULL LIMIT 1',
@@ -446,11 +463,12 @@ async function bulkCreate(req, res, next) {
 
       try {
         await pool.execute(
-          `INSERT INTO patients (name, custom_patient_id, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO patients (name, custom_patient_id, patient_added_on, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             name,
             customPatientId,
+            patientAddedOn,
             email,
             phone,
             date_of_birth,

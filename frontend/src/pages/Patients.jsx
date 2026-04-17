@@ -42,8 +42,8 @@ function parseAgeRange(range) {
   return { age_min: min, age_max: max };
 }
 
-const PATIENTS_CSV_HEADER = 'name,phone,patient_id,age,gender,address,blood_group,allergies,medical_notes';
-const PATIENTS_CSV_SAMPLE = `${PATIENTS_CSV_HEADER}\n"John Doe",9876543210,PAT-1001,30,male,"123 Main St",O+,None,`;
+const PATIENTS_CSV_HEADER = 'name,phone,patient_id,date_added_on,age,gender,address,blood_group,allergies,medical_notes';
+const PATIENTS_CSV_SAMPLE = `${PATIENTS_CSV_HEADER}\n"John Doe",9876543210,PAT-1001,2026-04-01,30,male,"123 Main St",O+,None,`;
 
 export default function Patients() {
   const [searchParams, setSearchParams] = useSearchParams();

@@ -53,7 +53,9 @@ export default function PatientForm() {
           setForm({
             ...initial,
             ...data.data,
-            patient_added_on: data.data?.created_at ? String(data.data.created_at).slice(0, 10) : '',
+            patient_added_on: data.data?.patient_added_on
+              ? String(data.data.patient_added_on).slice(0, 10)
+              : (data.data?.created_at ? String(data.data.created_at).slice(0, 10) : ''),
             date_of_birth: data.data?.date_of_birth ? String(data.data.date_of_birth).slice(0, 10) : '',
           })
         )

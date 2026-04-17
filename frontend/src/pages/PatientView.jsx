@@ -44,7 +44,7 @@ export default function PatientView() {
               <dd className="font-mono text-slate-700">{patient.id != null ? `PAT-${String(patient.id).padStart(5, '0')}` : '—'}</dd>
             </div>
             <div><dt className="text-caption text-slate-500">Phone</dt><dd>{patient.phone}</dd></div>
-            <div><dt className="text-caption text-slate-500">Email</dt><dd>{patient.email || '—'}</dd></div>
+            <div><dt className="text-caption text-slate-500">Patient Added date</dt><dd>{patient.created_at ? new Date(patient.created_at).toLocaleDateString() : '—'}</dd></div>
             <div><dt className="text-caption text-slate-500">DOB</dt><dd>{patient.date_of_birth || '—'}</dd></div>
             <div><dt className="text-caption text-slate-500">Gender</dt><dd>{patient.gender || '—'}</dd></div>
             <div><dt className="text-caption text-slate-500">Blood group</dt><dd>{patient.blood_group || '—'}</dd></div>

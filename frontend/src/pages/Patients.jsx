@@ -42,8 +42,8 @@ function parseAgeRange(range) {
   return { age_min: min, age_max: max };
 }
 
-const PATIENTS_CSV_HEADER = 'name,phone,email,age,gender,address,blood_group,allergies,medical_notes';
-const PATIENTS_CSV_SAMPLE = `${PATIENTS_CSV_HEADER}\n"John Doe",9876543210,john@example.com,30,male,"123 Main St",O+,None,`;
+const PATIENTS_CSV_HEADER = 'name,phone,patient_id,age,gender,address,blood_group,allergies,medical_notes';
+const PATIENTS_CSV_SAMPLE = `${PATIENTS_CSV_HEADER}\n"John Doe",9876543210,PAT-1001,30,male,"123 Main St",O+,None,`;
 
 export default function Patients() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -205,7 +205,7 @@ export default function Patients() {
       ),
     },
     { key: 'phone', header: 'Phone', render: (v) => v || '—' },
-    { key: 'email', header: 'Email', render: (v) => v || '—' },
+    { key: 'custom_patient_id', header: 'Patient ID', render: (v, row) => v || `PAT-${String(row.id).padStart(5, '0')}` },
     {
       key: 'date_of_birth',
       header: 'Age',
@@ -309,7 +309,7 @@ export default function Patients() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
               <FormInput
                 name="search"
-                placeholder="Search by name, phone, or email…"
+                placeholder="Search by name, phone, or patient ID…"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full pl-10"

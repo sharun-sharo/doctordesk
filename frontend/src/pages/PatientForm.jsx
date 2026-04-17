@@ -28,6 +28,7 @@ const initial = {
   custom_patient_id: '',
   email: '',
   phone: '',
+  patient_added_on: '',
   date_of_birth: '',
   gender: '',
   address: '',
@@ -52,6 +53,7 @@ export default function PatientForm() {
           setForm({
             ...initial,
             ...data.data,
+            patient_added_on: data.data?.created_at ? String(data.data.created_at).slice(0, 10) : '',
             date_of_birth: data.data?.date_of_birth ? String(data.data.date_of_birth).slice(0, 10) : '',
           })
         )
@@ -126,10 +128,10 @@ export default function PatientForm() {
         </div>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <FormInput
-            label="Date of birth"
-            name="date_of_birth"
+            label="Patient Added on"
+            name="patient_added_on"
             type="date"
-            value={form.date_of_birth ? String(form.date_of_birth).slice(0, 10) : ''}
+            value={form.patient_added_on ? String(form.patient_added_on).slice(0, 10) : ''}
             onChange={handleChange}
           />
           <FormInput

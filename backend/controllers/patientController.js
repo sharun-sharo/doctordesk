@@ -400,6 +400,7 @@ function ageToDateOfBirth(ageStr) {
 
 async function bulkCreate(req, res, next) {
   try {
+    await ensureCustomPatientIdColumn();
     if (!req.file || !req.file.buffer) {
       return res.status(400).json({ success: false, message: 'No CSV file uploaded' });
     }
@@ -422,6 +423,18 @@ async function bulkCreate(req, res, next) {
         continue;
       }
       const email = (row.email || '').trim() || null;
+      const customPatientIdRaw = (row.patient_id || row.custom_patient_id || '').trim();
+      const customPatientId = customPatientIdRaw || null;
+      if (customPatientId) {
+        const [existingWithSameCustomId] = await pool.execute(
+          'SELECT id FROM patients WHERE custom_patient_id = ? AND deleted_at IS NULL LIMIT 1',
+          [customPatientId]
+        );
+        if (existingWithSameCustomId.length) {
+          errors.push({ row: rowNum, message: 'patient id already exist try new' });
+          continue;
+        }
+      }
       const ageStr = row.age != null ? row.age : row.date_of_birth;
       const date_of_birth = ageToDateOfBirth(ageStr) || (row.date_of_birth || '').trim() || null;
       const gender = (row.gender || '').toLowerCase().trim();
@@ -433,10 +446,11 @@ async function bulkCreate(req, res, next) {
 
       try {
         await pool.execute(
-          `INSERT INTO patients (name, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO patients (name, custom_patient_id, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             name,
+            customPatientId,
             email,
             phone,
             date_of_birth,

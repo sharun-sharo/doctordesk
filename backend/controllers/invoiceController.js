@@ -406,7 +406,7 @@ async function downloadPdf(req, res, next) {
     const footerY = 841.89 - PDF_MARGIN - 44;
     doc.moveTo(left, footerY).lineTo(right, footerY).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
     doc.fontSize(8).fillColor('#94a3b8').text(
-      'Payment is due within 15 days. Thank you for choosing our clinic. For queries contact the clinic.',
+      'Thank you for choosing our clinic. For queries contact the clinic',
       left,
       footerY + 10,
       { width: PDF_CONTENT, align: 'center' }

@@ -28,6 +28,7 @@ export default function WalkIns() {
   const [newPatientForm, setNewPatientForm] = useState({
     name: '',
     phone: '',
+    custom_patient_id: '',
     email: '',
     age: '',
     gender: '',
@@ -128,6 +129,7 @@ export default function WalkIns() {
       const { data } = await api.post('/patients', {
         name,
         phone,
+        custom_patient_id: newPatientForm.custom_patient_id?.trim() || undefined,
         email: newPatientForm.email?.trim() || undefined,
         date_of_birth,
         gender: newPatientForm.gender || undefined,
@@ -136,7 +138,7 @@ export default function WalkIns() {
       setPatients((prev) => [created, ...prev]);
       setForm((f) => ({ ...f, patient_id: created.id }));
       setAddPatientDrawerOpen(false);
-      setNewPatientForm({ name: '', phone: '', email: '', age: '', gender: '' });
+      setNewPatientForm({ name: '', phone: '', custom_patient_id: '', email: '', age: '', gender: '' });
       setPatientSearch('');
       toast.success('Patient added and selected');
     } catch (err) {
@@ -382,6 +384,17 @@ export default function WalkIns() {
               placeholder="Phone number"
               className={inputBase}
               required
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-500">Patient ID</label>
+            <input
+              type="text"
+              name="custom_patient_id"
+              value={newPatientForm.custom_patient_id}
+              onChange={handleNewPatientChange}
+              placeholder="Enter patient ID manually"
+              className={inputBase}
             />
           </div>
           <div>

@@ -25,6 +25,7 @@ function ageToDateOfBirth(age) {
 
 const initial = {
   name: '',
+  custom_patient_id: '',
   email: '',
   phone: '',
   date_of_birth: '',
@@ -47,7 +48,13 @@ export default function PatientForm() {
     if (isEdit) {
       api
         .get(`/patients/${id}`)
-        .then(({ data }) => setForm({ ...initial, ...data.data }))
+        .then(({ data }) =>
+          setForm({
+            ...initial,
+            ...data.data,
+            date_of_birth: data.data?.date_of_birth ? String(data.data.date_of_birth).slice(0, 10) : '',
+          })
+        )
         .catch(() => toast.error('Patient not found'))
         .finally(() => setLoading(false));
     }
@@ -64,6 +71,7 @@ export default function PatientForm() {
     const payload = {
       ...form,
       name: typeof form.name === 'string' ? form.name.trim() : (form.name ?? ''),
+      custom_patient_id: typeof form.custom_patient_id === 'string' ? form.custom_patient_id.trim() : (form.custom_patient_id ?? ''),
       phone: typeof form.phone === 'string' ? form.phone.trim() : (form.phone ?? ''),
       email: typeof form.email === 'string' ? form.email.trim() : (form.email ?? ''),
       address: typeof form.address === 'string' ? form.address.trim() : (form.address ?? ''),
@@ -107,7 +115,23 @@ export default function PatientForm() {
           <FormInput label="Phone *" name="phone" value={form.phone} onChange={handleChange} required />
         </div>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <FormInput
+            label="Patient ID"
+            name="custom_patient_id"
+            value={form.custom_patient_id}
+            onChange={handleChange}
+            placeholder="Enter patient ID manually"
+          />
           <FormInput label="Email" name="email" type="email" value={form.email} onChange={handleChange} />
+        </div>
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <FormInput
+            label="Date of birth"
+            name="date_of_birth"
+            type="date"
+            value={form.date_of_birth ? String(form.date_of_birth).slice(0, 10) : ''}
+            onChange={handleChange}
+          />
           <FormInput
             label="Age"
             name="age"

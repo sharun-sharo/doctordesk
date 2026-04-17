@@ -1,6 +1,13 @@
 const { pool } = require('../config/database');
 const { logActivity } = require('../utils/activityLogger');
 const { ROLES } = require('../config/roles');
+let customPatientIdColumnEnsured = false;
+
+async function ensureCustomPatientIdColumn() {
+  if (customPatientIdColumnEnsured) return;
+  await pool.execute('ALTER TABLE patients ADD COLUMN IF NOT EXISTS custom_patient_id VARCHAR(64) NULL');
+  customPatientIdColumnEnsured = true;
+}
 
 /**
  * Returns SQL condition and params to restrict patients to the current user's scope.
@@ -107,6 +114,7 @@ function getPatientOrder(sort, order) {
 
 async function list(req, res, next) {
   try {
+    await ensureCustomPatientIdColumn();
     const { search, gender, age_min, age_max, page = 1, limit = 20, sort = 'created_at', order = 'desc' } = req.query;
     const perPage = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
     const offset = (Math.max(0, (Math.max(1, parseInt(page, 10) || 1) - 1)) * perPage) | 0;
@@ -114,7 +122,7 @@ async function list(req, res, next) {
     const orderBy = getPatientOrder(sort, order);
 
     const [rows] = await pool.execute(
-      `SELECT p.id, p.name, p.email, p.phone, p.date_of_birth, p.gender, p.address, p.blood_group, p.created_at
+      `SELECT p.id, p.custom_patient_id, p.name, p.email, p.phone, p.date_of_birth, p.gender, p.address, p.blood_group, p.created_at
        FROM patients p
        WHERE ${where}
        ORDER BY ${orderBy}
@@ -134,8 +142,9 @@ async function list(req, res, next) {
 
 async function getOne(req, res, next) {
   try {
+    await ensureCustomPatientIdColumn();
     const [rows] = await pool.execute(
-      `SELECT id, name, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_at
+      `SELECT id, custom_patient_id, name, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_at
        FROM patients WHERE id = ? AND deleted_at IS NULL`,
       [req.params.id]
     );
@@ -154,8 +163,10 @@ async function getOne(req, res, next) {
 
 async function create(req, res, next) {
   try {
+    await ensureCustomPatientIdColumn();
     const {
       name,
+      custom_patient_id,
       email,
       phone,
       date_of_birth,
@@ -166,10 +177,11 @@ async function create(req, res, next) {
       medical_notes,
     } = req.body;
     const [result] = await pool.execute(
-      `INSERT INTO patients (name, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO patients (name, custom_patient_id, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name,
+        custom_patient_id || null,
         email || null,
         phone,
         date_of_birth || null,
@@ -182,7 +194,7 @@ async function create(req, res, next) {
       ]
     );
     const [rows] = await pool.execute(
-      'SELECT id, name, email, phone, date_of_birth, gender, address, blood_group, created_at FROM patients WHERE id = ?',
+      'SELECT id, custom_patient_id, name, email, phone, date_of_birth, gender, address, blood_group, created_at FROM patients WHERE id = ?',
       [result.insertId]
     );
     await logActivity({
@@ -201,6 +213,7 @@ async function create(req, res, next) {
 
 async function update(req, res, next) {
   try {
+    await ensureCustomPatientIdColumn();
     const id = req.params.id;
     const [existing] = await pool.execute(
       'SELECT id FROM patients WHERE id = ? AND deleted_at IS NULL',
@@ -215,6 +228,7 @@ async function update(req, res, next) {
     }
     const {
       name,
+      custom_patient_id,
       email,
       phone,
       date_of_birth,
@@ -225,10 +239,11 @@ async function update(req, res, next) {
       medical_notes,
     } = req.body;
     await pool.execute(
-      `UPDATE patients SET name=?, email=?, phone=?, date_of_birth=?, gender=?, address=?, blood_group=?, allergies=?, medical_notes=?
+      `UPDATE patients SET name=?, custom_patient_id=?, email=?, phone=?, date_of_birth=?, gender=?, address=?, blood_group=?, allergies=?, medical_notes=?
        WHERE id = ?`,
       [
         name,
+        custom_patient_id || null,
         email || null,
         phone,
         date_of_birth || null,
@@ -241,7 +256,7 @@ async function update(req, res, next) {
       ]
     );
     const [rows] = await pool.execute(
-      'SELECT id, name, email, phone, date_of_birth, gender, address, blood_group, medical_notes, updated_at FROM patients WHERE id = ?',
+      'SELECT id, custom_patient_id, name, email, phone, date_of_birth, gender, address, blood_group, medical_notes, updated_at FROM patients WHERE id = ?',
       [id]
     );
     await logActivity({ userId: req.user.id, action: 'update', entityType: 'patient', entityId: id, req });

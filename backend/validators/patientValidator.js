@@ -4,6 +4,7 @@ const { body, param } = require('express-validator');
 const createRules = [
   body('name').trim().notEmpty().withMessage('Name required').isLength({ max: 255 }),
   body('phone').trim().notEmpty().withMessage('Phone required'),
+  body('custom_patient_id').optional({ values: 'falsy' }).trim().isLength({ max: 64 }).withMessage('Patient ID must be at most 64 characters'),
   body('email').optional({ values: 'falsy' }).isEmail().normalizeEmail(),
   body('date_of_birth').optional({ values: 'falsy' }).isDate().withMessage('Invalid date format'),
   body('gender').optional({ values: 'falsy' }).isIn(['male', 'female', 'other']).withMessage('Invalid gender'),
@@ -23,6 +24,11 @@ const updateRules = [
     .trim()
     .notEmpty()
     .withMessage('Phone is required'),
+  body('custom_patient_id')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 64 })
+    .withMessage('Patient ID must be at most 64 characters'),
   body('email').optional({ values: 'falsy' }).isEmail().normalizeEmail().withMessage('Invalid email'),
   body('date_of_birth').optional({ values: 'falsy' }).isDate().withMessage('Invalid date format'),
   body('gender').optional({ values: 'falsy' }).isIn(['male', 'female', 'other']).withMessage('Invalid gender'),

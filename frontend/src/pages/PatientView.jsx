@@ -5,6 +5,17 @@ import { Calendar, FileText, CreditCard, Pencil } from 'lucide-react';
 import Spinner from '../components/ui/Spinner';
 import { formatTime12h } from '../lib/format';
 
+function getAge(dob) {
+  if (!dob) return '—';
+  const birth = new Date(dob);
+  if (Number.isNaN(birth.getTime())) return '—';
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age -= 1;
+  return age >= 0 ? age : '—';
+}
+
 export default function PatientView() {
   const { id } = useParams();
   const [patient, setPatient] = useState(null);
@@ -41,11 +52,13 @@ export default function PatientView() {
           <dl className="space-y-3 text-body">
             <div>
               <dt className="text-caption text-slate-500">Patient ID</dt>
-              <dd className="font-mono text-slate-700">{patient.id != null ? `PAT-${String(patient.id).padStart(5, '0')}` : '—'}</dd>
+              <dd className="font-mono text-slate-700">
+                {patient.custom_patient_id || (patient.id != null ? `PAT-${String(patient.id).padStart(5, '0')}` : '—')}
+              </dd>
             </div>
             <div><dt className="text-caption text-slate-500">Phone</dt><dd>{patient.phone}</dd></div>
             <div><dt className="text-caption text-slate-500">Patient Added date</dt><dd>{patient.created_at ? new Date(patient.created_at).toLocaleDateString() : '—'}</dd></div>
-            <div><dt className="text-caption text-slate-500">DOB</dt><dd>{patient.date_of_birth || '—'}</dd></div>
+            <div><dt className="text-caption text-slate-500">Age</dt><dd>{getAge(patient.date_of_birth)}</dd></div>
             <div><dt className="text-caption text-slate-500">Gender</dt><dd>{patient.gender || '—'}</dd></div>
             <div><dt className="text-caption text-slate-500">Blood group</dt><dd>{patient.blood_group || '—'}</dd></div>
             <div><dt className="text-caption text-slate-500">Address</dt><dd>{patient.address || '—'}</dd></div>

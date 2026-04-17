@@ -182,8 +182,6 @@ export default function Patients() {
       .finally(() => setUploading(false));
   };
 
-  const formatPatientId = (id) => (id != null ? `PAT-${String(id).padStart(5, '0')}` : '—');
-
   const columns = [
     {
       key: 'sno',
@@ -192,15 +190,6 @@ export default function Patients() {
       cellClassName: 'w-16 text-center text-slate-500 font-medium',
       render: (_, __, rowIndex) =>
         (pagination.page - 1) * pagination.limit + rowIndex + 1,
-    },
-    {
-      key: 'patient_id',
-      header: 'Patient ID',
-      render: (_, row) => (
-        <span className="font-mono text-sm text-slate-600" title={`ID: ${row.id}`}>
-          {formatPatientId(row.id)}
-        </span>
-      ),
     },
     {
       key: 'name',
@@ -320,7 +309,7 @@ export default function Patients() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
               <FormInput
                 name="search"
-                placeholder="Search by name, phone, email, or patient ID…"
+                placeholder="Search by name, phone, or email…"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full pl-10"

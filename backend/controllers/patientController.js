@@ -5,7 +5,17 @@ let customPatientIdColumnEnsured = false;
 
 async function ensureCustomPatientIdColumn() {
   if (customPatientIdColumnEnsured) return;
-  await pool.execute('ALTER TABLE patients ADD COLUMN IF NOT EXISTS custom_patient_id VARCHAR(64) NULL');
+  const [rows] = await pool.execute(
+    `SELECT 1
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'patients'
+       AND COLUMN_NAME = 'custom_patient_id'
+     LIMIT 1`
+  );
+  if (!rows.length) {
+    await pool.execute('ALTER TABLE patients ADD COLUMN custom_patient_id VARCHAR(64) NULL');
+  }
   customPatientIdColumnEnsured = true;
 }
 

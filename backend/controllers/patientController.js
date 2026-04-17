@@ -176,12 +176,22 @@ async function create(req, res, next) {
       allergies,
       medical_notes,
     } = req.body;
+    const normalizedCustomPatientId = typeof custom_patient_id === 'string' ? custom_patient_id.trim() : '';
+    if (normalizedCustomPatientId) {
+      const [existingWithSameCustomId] = await pool.execute(
+        'SELECT id FROM patients WHERE custom_patient_id = ? AND deleted_at IS NULL LIMIT 1',
+        [normalizedCustomPatientId]
+      );
+      if (existingWithSameCustomId.length) {
+        return res.status(409).json({ success: false, message: 'patient id already exist try new' });
+      }
+    }
     const [result] = await pool.execute(
       `INSERT INTO patients (name, custom_patient_id, email, phone, date_of_birth, gender, address, blood_group, allergies, medical_notes, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name,
-        custom_patient_id || null,
+        normalizedCustomPatientId || null,
         email || null,
         phone,
         date_of_birth || null,
@@ -238,12 +248,22 @@ async function update(req, res, next) {
       allergies,
       medical_notes,
     } = req.body;
+    const normalizedCustomPatientId = typeof custom_patient_id === 'string' ? custom_patient_id.trim() : '';
+    if (normalizedCustomPatientId) {
+      const [existingWithSameCustomId] = await pool.execute(
+        'SELECT id FROM patients WHERE custom_patient_id = ? AND deleted_at IS NULL AND id <> ? LIMIT 1',
+        [normalizedCustomPatientId, id]
+      );
+      if (existingWithSameCustomId.length) {
+        return res.status(409).json({ success: false, message: 'patient id already exist try new' });
+      }
+    }
     await pool.execute(
       `UPDATE patients SET name=?, custom_patient_id=?, email=?, phone=?, date_of_birth=?, gender=?, address=?, blood_group=?, allergies=?, medical_notes=?
        WHERE id = ?`,
       [
         name,
-        custom_patient_id || null,
+        normalizedCustomPatientId || null,
         email || null,
         phone,
         date_of_birth || null,

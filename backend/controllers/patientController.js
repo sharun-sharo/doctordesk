@@ -129,6 +129,7 @@ function buildPatientWhere(query, roleId, userId, assignedAdminId = null) {
 function getPatientOrder(sort, order) {
   const dir = order === 'asc' ? 'ASC' : 'DESC';
   if (sort === 'name') return `p.name ${dir}`;
+  if (sort === 'patient_id') return `COALESCE(NULLIF(p.custom_patient_id, ''), CONCAT('PAT-', LPAD(p.id, 5, '0'))) ${dir}`;
   if (sort === 'age') return `TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) ${dir}`;
   return `p.created_at ${dir}`;
 }
@@ -136,7 +137,7 @@ function getPatientOrder(sort, order) {
 async function list(req, res, next) {
   try {
     await ensureCustomPatientIdColumn();
-    const { search, gender, age_min, age_max, page = 1, limit = 20, sort = 'created_at', order = 'desc' } = req.query;
+    const { search, gender, age_min, age_max, page = 1, limit = 20, sort = 'patient_id', order = 'asc' } = req.query;
     const perPage = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
     const offset = (Math.max(0, (Math.max(1, parseInt(page, 10) || 1) - 1)) * perPage) | 0;
     const { where, params } = buildPatientWhere({ search, gender, age_min, age_max }, req.user.roleId, req.user.id, req.user.assignedAdminId);
@@ -413,6 +414,37 @@ function ageToDateOfBirth(ageStr) {
   return `${year}-01-01`;
 }
 
+function normalizeDateInput(dateStr) {
+  const raw = String(dateStr || '').trim();
+  if (!raw) return null;
+
+  // ISO-like date from app/forms/csv template
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const d = new Date(`${raw}T00:00:00Z`);
+    return Number.isNaN(d.getTime()) ? null : raw;
+  }
+
+  // Spreadsheet-friendly values like 4/1/26 or 04/01/2026
+  const mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!mdy) return null;
+  const month = parseInt(mdy[1], 10);
+  const day = parseInt(mdy[2], 10);
+  let year = parseInt(mdy[3], 10);
+  if (year < 100) year += 2000;
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (
+    Number.isNaN(d.getTime())
+    || d.getUTCFullYear() !== year
+    || d.getUTCMonth() !== month - 1
+    || d.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 async function bulkCreate(req, res, next) {
   try {
     await ensureCustomPatientIdColumn();
@@ -441,7 +473,11 @@ async function bulkCreate(req, res, next) {
       const customPatientIdRaw = (row.patient_id || row.custom_patient_id || '').trim();
       const customPatientId = customPatientIdRaw || null;
       const patientAddedOnRaw = (row.date_added_on || row.patient_added_on || '').trim();
-      const patientAddedOn = patientAddedOnRaw || null;
+      const patientAddedOn = normalizeDateInput(patientAddedOnRaw);
+      if (patientAddedOnRaw && !patientAddedOn) {
+        errors.push({ row: rowNum, message: 'Invalid date_added_on. Use YYYY-MM-DD or M/D/YY' });
+        continue;
+      }
       if (customPatientId) {
         const [existingWithSameCustomId] = await pool.execute(
           'SELECT id FROM patients WHERE custom_patient_id = ? AND deleted_at IS NULL LIMIT 1',

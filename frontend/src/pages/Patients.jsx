@@ -54,8 +54,8 @@ export default function Patients() {
   const [searchQuery, setSearchQuery] = useState(urlSearch);
   const [gender, setGender] = useState('');
   const [ageRange, setAgeRange] = useState('');
-  const [sortKey, setSortKey] = useState('created_at');
-  const [sortOrder, setSortOrder] = useState('desc');
+  const [sortKey, setSortKey] = useState('patient_id');
+  const [sortOrder, setSortOrder] = useState('asc');
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -205,7 +205,7 @@ export default function Patients() {
       ),
     },
     { key: 'phone', header: 'Phone', render: (v) => v || '—' },
-    { key: 'custom_patient_id', header: 'Patient ID', render: (v, row) => v || `PAT-${String(row.id).padStart(5, '0')}` },
+    { key: 'custom_patient_id', header: 'Patient ID', sortKey: 'patient_id', render: (v, row) => v || `PAT-${String(row.id).padStart(5, '0')}` },
     {
       key: 'date_of_birth',
       header: 'Age',

@@ -103,6 +103,8 @@ export default function Invoices() {
     }
   };
 
+  const [logoBuster, setLogoBuster] = useState(Date.now());
+
   const handleLogoUpload = (e) => {
     const file = e.target?.files?.[0];
     if (!file || !file.type.startsWith('image/')) {
@@ -116,6 +118,7 @@ export default function Invoices() {
       .post('/settings/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       .then(({ data }) => {
         setSettings((s) => ({ ...s, logoUrl: data.data?.logoUrl ?? data.logoUrl ?? s.logoUrl }));
+        setLogoBuster(Date.now());
         toast.success('Logo updated. It will appear on new invoice PDFs.');
         fetchSettings();
       })
@@ -126,7 +129,7 @@ export default function Invoices() {
       });
   };
 
-  const logoSrc = settings.logoUrl ? `${API_ORIGIN || window.location.origin}${settings.logoUrl}` : null;
+  const logoSrc = settings.logoUrl ? `${API_ORIGIN || window.location.origin}${settings.logoUrl}?t=${logoBuster}` : null;
 
   const handleSaveBusiness = () => {
     setBusinessSaving(true);

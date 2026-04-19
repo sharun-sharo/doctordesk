@@ -322,7 +322,7 @@ export default function Patients() {
             <button
               type="button"
               onClick={() => setBulkDeleteConfirmOpen(true)}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-red-500 px-4 text-sm font-medium text-white shadow-sm transition-colors duration-200 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:ring-offset-1 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:w-auto mr-auto sm:mr-2"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-red-500 px-4 text-sm font-medium text-white shadow-sm transition-colors duration-200 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:ring-offset-1 active:scale-95 disabled:pointer-events-none disabled:opacity-50 w-full sm:w-auto sm:mr-auto"
             >
               <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
               Delete Selected ({selectedIds.length})

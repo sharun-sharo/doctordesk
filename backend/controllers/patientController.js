@@ -541,4 +541,44 @@ async function bulkCreate(req, res, next) {
   }
 }
 
-module.exports = { list, getOne, create, update, remove, getMedicalHistory, bulkCreate };
+async function bulkRemove(req, res, next) {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'No patient IDs provided' });
+    }
+
+    const validIds = [];
+    for (const id of ids) {
+      const [existing] = await pool.execute('SELECT id FROM patients WHERE id = ? AND deleted_at IS NULL', [id]);
+      if (existing.length) {
+        const allowed = await canAccessPatient(Number(id), req.user.roleId, req.user.id, req.user.assignedAdminId);
+        if (allowed) {
+          validIds.push(Number(id));
+        }
+      }
+    }
+
+    if (validIds.length === 0) {
+      return res.status(404).json({ success: false, message: 'No valid patients found or authorized to delete' });
+    }
+
+    const placeholders = validIds.map(() => '?').join(',');
+    await pool.execute(`UPDATE patients SET deleted_at = NOW() WHERE id IN (${placeholders})`, validIds);
+
+    await logActivity({
+      userId: req.user.id,
+      action: 'bulk_delete',
+      entityType: 'patient',
+      entityId: null,
+      newValues: { count: validIds.length, ids: validIds },
+      req,
+    });
+
+    res.json({ success: true, message: `Successfully deleted ${validIds.length} patients` });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, getOne, create, update, remove, getMedicalHistory, bulkCreate, bulkRemove };

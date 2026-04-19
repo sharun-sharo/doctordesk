@@ -60,6 +60,8 @@ export default function Patients() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   const fetchPatients = useCallback(
@@ -81,6 +83,7 @@ export default function Patients() {
         .then(({ data }) => {
           setList(data.data.patients);
           setPagination(data.data.pagination);
+          setSelectedIds([]);
         })
         .catch((err) => toast.error(err.response?.data?.message || err.message || 'Failed to load patients'))
         .finally(() => setLoading(false));
@@ -138,6 +141,35 @@ export default function Patients() {
       .finally(() => setDeleting(false));
   };
 
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedIds(list.map((patient) => patient.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleSelectRow = (id) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    setDeleting(true);
+    api
+      .post('/patients/bulk-delete', { ids: selectedIds })
+      .then((res) => {
+        toast.success(res.data.message || `Deleted ${selectedIds.length} patients`);
+        setSelectedIds([]);
+        setBulkDeleteConfirmOpen(false);
+        fetchPatients(pagination.page);
+      })
+      .catch((err) => toast.error(err.response?.data?.message || 'Bulk delete failed'))
+      .finally(() => setDeleting(false));
+  };
+
   const handleDownloadSample = () => {
     const blob = new Blob([PATIENTS_CSV_SAMPLE], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -183,6 +215,29 @@ export default function Patients() {
   };
 
   const columns = [
+    {
+      key: 'select',
+      header: (
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 cursor-pointer"
+          checked={list.length > 0 && selectedIds.length === list.length}
+          onChange={handleSelectAll}
+          aria-label="Select all patients on this page"
+        />
+      ),
+      headerClassName: 'w-12 text-center px-0',
+      cellClassName: 'w-12 text-center px-0',
+      render: (_, row) => (
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 cursor-pointer"
+          checked={selectedIds.includes(row.id)}
+          onChange={() => handleSelectRow(row.id)}
+          aria-label={`Select patient ${row.name}`}
+        />
+      ),
+    },
     {
       key: 'sno',
       header: 'S.No',
@@ -263,6 +318,16 @@ export default function Patients() {
         description="Manage patient records and demographics."
       >
         <div className="flex flex-wrap items-center gap-2">
+          {selectedIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setBulkDeleteConfirmOpen(true)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-red-500 px-4 text-sm font-medium text-white shadow-sm transition-colors duration-200 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:ring-offset-1 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:w-auto mr-auto sm:mr-2"
+            >
+              <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
+              Delete Selected ({selectedIds.length})
+            </button>
+          )}
           <button
             type="button"
             onClick={handleDownloadSample}
@@ -379,6 +444,18 @@ export default function Patients() {
         confirmLabel="Remove"
         cancelLabel="Cancel"
         onConfirm={handleDelete}
+        variant="danger"
+        loading={deleting}
+      />
+      
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title="Remove selected patients?"
+        message={`This action cannot be undone. ${selectedIds.length} patient record(s) will be permanently removed.`}
+        confirmLabel="Remove All"
+        cancelLabel="Cancel"
+        onConfirm={handleBulkDelete}
         variant="danger"
         loading={deleting}
       />

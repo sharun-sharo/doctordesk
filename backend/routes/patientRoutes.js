@@ -15,6 +15,7 @@ router.get('/:id/medical-history', patientController.getMedicalHistory);
 router.get('/:id', patientController.getOne);
 router.post('/', createRules, validate, patientController.create);
 router.post('/bulk', csvUpload, patientController.bulkCreate);
+router.post('/bulk-delete', patientController.bulkRemove);
 router.put('/:id', updateRules, validate, patientController.update);
 router.delete('/:id', patientController.remove);
 

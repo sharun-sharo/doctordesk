@@ -231,7 +231,7 @@ function formatTime(t) {
 async function downloadPdf(req, res, next) {
   try {
     const [inv] = await pool.execute(
-      `SELECT i.*, p.name AS patient_name, p.phone AS patient_phone, p.address AS patient_address,
+      `SELECT i.*, p.name AS patient_name, p.phone AS patient_phone, p.address AS patient_address, p.date_of_birth AS patient_dob, p.gender AS patient_gender,
               a.appointment_date, a.start_time, u.name AS doctor_name, u.phone AS doctor_phone,
               creator.name AS creator_name, creator.phone AS creator_phone
        FROM invoices i
@@ -315,21 +315,55 @@ async function downloadPdf(req, res, next) {
     doc.fontSize(9).fillColor('#64748b').text('Doctor Details', left, y);
     doc.text('Patient Details', col2Start, y);
     y += 16;
+    
     const doctorName = data.doctor_name || data.creator_name || '—';
     const doctorPhone = data.doctor_phone || data.creator_phone || '';
+    
+    let leftY = y;
+    let rightY = y;
+    
     doc.fontSize(10).fillColor('#1e293b');
-    doc.text(doctorName, left, y);
-    doc.text(data.patient_name || '—', col2Start, y);
-    y += 14;
+    doc.text(doctorName, left, leftY);
+    doc.text(data.patient_name || '—', col2Start, rightY);
+    leftY += 14;
+    rightY += 14;
+    
     doc.fontSize(9).fillColor('#475569');
-    doc.text(doctorPhone ? `Phone: ${doctorPhone}` : '—', left, y);
-    doc.text(data.patient_phone ? `Phone: ${data.patient_phone}` : '—', col2Start, y);
-    y += 14;
-    if (data.patient_address) {
-      doc.text(`Address: ${data.patient_address}`, col2Start, y, { width: PDF_CONTENT / 2 - 20 });
-      y += 14;
+    doc.text(doctorPhone ? `Phone: ${doctorPhone}` : '—', left, leftY);
+    leftY += 14;
+    
+    if (data.patient_phone) {
+      doc.text(`Phone: ${data.patient_phone}`, col2Start, rightY);
+      rightY += 14;
+    } else {
+      doc.text('Phone: —', col2Start, rightY);
+      rightY += 14;
     }
-    y += 12;
+    
+    let ageGenderStr = [];
+    if (data.patient_dob) {
+      const today = new Date();
+      const birth = new Date(data.patient_dob);
+      let age = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+      ageGenderStr.push(`${age} Yrs`);
+    }
+    if (data.patient_gender) {
+      ageGenderStr.push(data.patient_gender.charAt(0).toUpperCase() + data.patient_gender.slice(1));
+    }
+    if (ageGenderStr.length > 0) {
+      doc.text(ageGenderStr.join(' · '), col2Start, rightY);
+      rightY += 14;
+    }
+
+    if (data.patient_address) {
+      doc.text(`Address: ${data.patient_address}`, col2Start, rightY, { width: PDF_CONTENT / 2 - 20 });
+      const addressHeight = doc.heightOfString(`Address: ${data.patient_address}`, { width: PDF_CONTENT / 2 - 20 });
+      rightY += addressHeight;
+    }
+    
+    y = Math.max(leftY, rightY) + 12;
 
     // ----- Appointment information -----
     if (data.appointment_date || data.start_time) {

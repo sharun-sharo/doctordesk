@@ -4,6 +4,23 @@ const { logActivity } = require('../utils/activityLogger');
 const PDFDocument = require('pdfkit');
 const { ROLES } = require('../config/roles');
 const { getClinicLogoPath, getClinicBusinessSettings } = require('./settingsController');
+let invoiceSchemaEnsured = false;
+
+async function ensureInvoiceSchema() {
+  if (invoiceSchemaEnsured) return;
+  const [paidAmountCol] = await pool.execute(
+    `SELECT 1
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'invoices'
+       AND COLUMN_NAME = 'paid_amount'
+     LIMIT 1`
+  );
+  if (!paidAmountCol.length) {
+    await pool.execute('ALTER TABLE invoices ADD COLUMN paid_amount DECIMAL(12,2) DEFAULT 0.00');
+  }
+  invoiceSchemaEnsured = true;
+}
 
 /** Returns true if the user can access the given invoice (by id). assignedAdminId fallback when receptionist_doctors is empty. */
 async function canAccessInvoice(invoiceId, roleId, userId, assignedAdminId = null) {
@@ -33,6 +50,7 @@ async function canAccessInvoice(invoiceId, roleId, userId, assignedAdminId = nul
 
 async function list(req, res, next) {
   try {
+    await ensureInvoiceSchema();
     const { patient_id, payment_status, page = 1, limit = 20 } = req.query;
     const perPage = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
     const offset = (Math.max(0, (Math.max(1, parseInt(page, 10) || 1) - 1)) * perPage) | 0;
@@ -112,6 +130,7 @@ async function getOne(req, res, next) {
 
 async function create(req, res, next) {
   try {
+    await ensureInvoiceSchema();
     const { patient_id, appointment_id, items, tax_percent = 0, discount = 0 } = req.body;
     const invoiceNumber = await generateInvoiceNumber();
     let subtotal = 0;
@@ -183,6 +202,7 @@ async function create(req, res, next) {
 
 async function updatePayment(req, res, next) {
   try {
+    await ensureInvoiceSchema();
     const id = req.params.id;
     const { paid_amount, payment_status } = req.body;
     const [existing] = await pool.execute(
@@ -230,6 +250,7 @@ function formatTime(t) {
 
 async function downloadPdf(req, res, next) {
   try {
+    await ensureInvoiceSchema();
     const [inv] = await pool.execute(
       `SELECT i.*, p.name AS patient_name, p.phone AS patient_phone, p.address AS patient_address, p.date_of_birth AS patient_dob, p.gender AS patient_gender,
               a.appointment_date, a.start_time, u.name AS doctor_name, u.phone AS doctor_phone,

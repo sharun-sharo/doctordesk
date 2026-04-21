@@ -54,7 +54,7 @@ export default function Invoices() {
         setList(data.data.invoices);
         setPagination(data.data.pagination);
       })
-      .catch(() => toast.error('Failed to load'))
+      .catch((err) => toast.error(err.response?.data?.message || err.message || 'Failed to load'))
       .finally(() => setLoading(false));
   };
 

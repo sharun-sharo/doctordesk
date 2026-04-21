@@ -31,6 +31,9 @@ async function getStats(req, res, next) {
     const receptionistFilter = isReceptionistOrAssistant
       ? ' AND (doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (doctor_id = ? AND ? IS NOT NULL))'
       : '';
+    const receptionistFilterWithAlias = isReceptionistOrAssistant
+      ? ' AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))'
+      : '';
 
     const patientScope = getPatientScopeForDashboard(roleId, userId, req.user.assignedAdminId);
     const [patientsCount] = await pool.execute(
@@ -50,8 +53,8 @@ async function getStats(req, res, next) {
       upcomingSql += ' AND a.doctor_id = ?';
       todaySql += ' AND a.doctor_id = ?';
     } else if (isReceptionistOrAssistant) {
-      upcomingSql += receptionistFilter.replace('doctor_id', 'a.doctor_id');
-      todaySql += receptionistFilter.replace('doctor_id', 'a.doctor_id');
+      upcomingSql += receptionistFilterWithAlias;
+      todaySql += receptionistFilterWithAlias;
     }
     const [appointmentsCount] = await pool.execute(upcomingSql, appointmentParams);
     const [todayAppointments] = await pool.execute(todaySql, appointmentParams);
@@ -255,15 +258,15 @@ async function getMetrics(req, res, next) {
 
     const isDoctorOrAdmin = roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN;
     const isReceptionistOrAssistant = roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR;
-    const baseWhere = isDoctorOrAdmin ? ' AND a.doctor_id = ?' : (isReceptionistOrAssistant ? ' AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))' : '');
-    const baseWhereNoAlias = isDoctorOrAdmin ? ' AND doctor_id = ?' : (isReceptionistOrAssistant ? ' AND (doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (doctor_id = ? AND ? IS NOT NULL))' : '');
+    const baseWhere = isDoctorOrAdmin ? ' AND doctor_id = ?' : (isReceptionistOrAssistant ? ' AND (doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (doctor_id = ? AND ? IS NOT NULL))' : '');
+    const baseWhereWithAlias = isDoctorOrAdmin ? ' AND a.doctor_id = ?' : (isReceptionistOrAssistant ? ' AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))' : '');
     const baseParams = (isDoctorOrAdmin || isReceptionistOrAssistant) ? (isReceptionistOrAssistant ? [userId, req.user.assignedAdminId, req.user.assignedAdminId] : [userId]) : [];
 
     // Total patients this month (with appointments)
     const [totalPatientsThisMonth] = await pool.execute(
       `SELECT COUNT(DISTINCT a.patient_id) AS total FROM appointments a
        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
-       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${baseWhere.replace('doctor_id', 'a.doctor_id')}`,
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${baseWhereWithAlias}`,
       baseParams
     );
 
@@ -287,7 +290,7 @@ async function getMetrics(req, res, next) {
     const [todayAppts] = await pool.execute(
       `SELECT COUNT(*) AS total FROM appointments a
        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
-       WHERE a.deleted_at IS NULL AND a.appointment_date = CURDATE() AND a.status IN ('scheduled','completed')${baseWhere.replace('doctor_id', 'a.doctor_id')}`,
+       WHERE a.deleted_at IS NULL AND a.appointment_date = CURDATE() AND a.status IN ('scheduled','completed')${baseWhereWithAlias}`,
       baseParams
     );
 
@@ -298,7 +301,7 @@ async function getMetrics(req, res, next) {
          SUM(CASE WHEN a.status IN ('scheduled','completed','no_show','cancelled') THEN 1 ELSE 0 END) AS total
        FROM appointments a
        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
-       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)${baseWhere.replace('doctor_id', 'a.doctor_id')}`,
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)${baseWhereWithAlias}`,
       baseParams
     );
     const totalForNoShow = parseInt(noShowStats[0]?.total || 0, 10);
@@ -332,7 +335,7 @@ async function getMetrics(req, res, next) {
     const [patientCountForAvg] = await pool.execute(
       `SELECT COUNT(DISTINCT a.patient_id) AS total FROM appointments a
        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
-       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${baseWhere.replace('doctor_id', 'a.doctor_id')}`,
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${baseWhereWithAlias}`,
       baseParams
     );
     const patientsWithAppts = parseInt(patientCountForAvg[0]?.total || 0, 10);
@@ -366,7 +369,7 @@ async function getMetrics(req, res, next) {
     const [utilized] = await pool.execute(
       `SELECT COUNT(*) AS total FROM appointments a
        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
-       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND a.status IN ('scheduled','completed')${baseWhere.replace('doctor_id', 'a.doctor_id')}`,
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND a.status IN ('scheduled','completed')${baseWhereWithAlias}`,
       baseParams
     );
     const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
@@ -441,7 +444,7 @@ async function getDailyAppointmentDistribution(req, res, next) {
        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
        WHERE a.deleted_at IS NULL
        AND a.status IN ('scheduled', 'completed')
-       AND a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL 4 WEEK)${baseWhere.replace('doctor_id', 'a.doctor_id')}
+       AND a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL 4 WEEK)${baseWhereWithAlias}
        GROUP BY DAYOFWEEK(a.appointment_date), day_name ORDER BY DAYOFWEEK(a.appointment_date)`,
       params
     );

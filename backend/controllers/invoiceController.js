@@ -47,6 +47,7 @@ async function list(req, res, next) {
       conditions.push('i.payment_status = ?');
       params.push(payment_status);
     }
+    let join = '';
     if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
       join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
       conditions.push('(i.doctor_id = ? OR (i.appointment_id IS NOT NULL AND a.doctor_id = ?))');

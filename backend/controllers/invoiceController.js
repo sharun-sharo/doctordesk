@@ -8,7 +8,7 @@ const { getClinicLogoPath, getClinicBusinessSettings } = require('./settingsCont
 /** Returns true if the user can access the given invoice (by id). assignedAdminId fallback when receptionist_doctors is empty. */
 async function canAccessInvoice(invoiceId, roleId, userId, assignedAdminId = null) {
   const [rows] = await pool.execute(
-    `SELECT i.id, i.appointment_id, i.doctor_id, i.created_by, a.doctor_id AS appointment_doctor_id
+    `SELECT i.id, i.appointment_id, i.created_by, a.doctor_id AS appointment_doctor_id
      FROM invoices i
      LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL
      WHERE i.id = ? AND i.deleted_at IS NULL`,
@@ -18,16 +18,15 @@ async function canAccessInvoice(invoiceId, roleId, userId, assignedAdminId = nul
   const r = rows[0];
   if (roleId === ROLES.SUPER_ADMIN) return true;
   if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
-    return r.doctor_id === userId || (r.appointment_id != null && r.appointment_doctor_id === userId);
+    return r.appointment_id == null || r.appointment_doctor_id === userId;
   }
   if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
-    const targetDoctorId = r.doctor_id || r.appointment_doctor_id;
-    if (!targetDoctorId) return r.created_by === userId;
+    if (r.appointment_id == null) return r.created_by === userId;
     const [assigned] = await pool.execute(
       'SELECT 1 FROM receptionist_doctors WHERE receptionist_id = ? AND doctor_id = ? LIMIT 1',
-      [userId, targetDoctorId]
+      [userId, r.appointment_doctor_id]
     );
-    return (assigned && assigned.length) > 0 || (assignedAdminId != null && Number(targetDoctorId) === Number(assignedAdminId));
+    return (assigned && assigned.length) > 0 || (assignedAdminId != null && Number(r.appointment_doctor_id) === Number(assignedAdminId));
   }
   return false;
 }
@@ -36,11 +35,9 @@ async function list(req, res, next) {
   try {
     const { patient_id, payment_status, page = 1, limit = 20 } = req.query;
     const perPage = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
-    const offset = Math.max(0, (parseInt(page, 10) - 1) * perPage);
-
+    const offset = (Math.max(0, (Math.max(1, parseInt(page, 10) || 1) - 1)) * perPage) | 0;
     const conditions = ['i.deleted_at IS NULL'];
     const params = [];
-
     if (patient_id) {
       conditions.push('i.patient_id = ?');
       params.push(patient_id);
@@ -49,56 +46,40 @@ async function list(req, res, next) {
       conditions.push('i.payment_status = ?');
       params.push(payment_status);
     }
-
     let join = '';
-    const userId = req.user.id;
-    const roleId = req.user.roleId;
-
-    if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
+    if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
       join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
-      conditions.push('(i.doctor_id = ? OR a.doctor_id = ? OR (i.doctor_id IS NULL AND i.appointment_id IS NULL AND i.created_by = ?))');
-      params.push(userId, userId, userId);
-    } else if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
+      conditions.push('(a.id IS NULL OR a.doctor_id = ?)');
+      params.push(req.user.id);
+    } else if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
       join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
-      const assignedAdminId = req.user.assignedAdminId;
-      conditions.push(`(
-        i.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)
-        OR (i.doctor_id = ? AND ? IS NOT NULL)
-        OR a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)
-        OR (a.doctor_id = ? AND ? IS NOT NULL)
-        OR (i.doctor_id IS NULL AND i.appointment_id IS NULL AND i.created_by = ?)
-      )`);
-      params.push(userId, assignedAdminId, assignedAdminId, userId, assignedAdminId, assignedAdminId, userId);
+      conditions.push('(i.appointment_id IS NULL AND i.created_by = ?) OR (a.id IS NOT NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)))');
+      params.push(req.user.id, req.user.id, req.user.assignedAdminId, req.user.assignedAdminId);
     }
-
     const where = conditions.join(' AND ');
+    const allParams = [...params];
 
     const [rows] = await pool.execute(
       `SELECT i.id, i.invoice_number, i.patient_id, i.total, i.payment_status, i.paid_amount, i.created_at,
-              p.name AS patient_name
+        p.name AS patient_name
        FROM invoices i
        JOIN patients p ON i.patient_id = p.id
        ${join}
        WHERE ${where}
        ORDER BY i.created_at DESC
        LIMIT ${perPage} OFFSET ${offset}`,
-      params
+      allParams
     );
-
     const [[{ total }]] = await pool.execute(
       `SELECT COUNT(*) AS total FROM invoices i ${join} WHERE ${where}`,
-      params
+      allParams
     );
 
     res.json({
       success: true,
-      data: { 
-        invoices: rows, 
-        pagination: { page: parseInt(page, 10), limit: perPage, total } 
-      },
+      data: { invoices: rows, pagination: { page: parseInt(page, 10), limit: perPage, total } },
     });
   } catch (err) {
-    console.error('Invoice list error:', err);
     next(err);
   }
 }
@@ -131,7 +112,7 @@ async function getOne(req, res, next) {
 
 async function create(req, res, next) {
   try {
-    const { patient_id, doctor_id, appointment_id, items, tax_percent = 0, discount = 0 } = req.body;
+    const { patient_id, appointment_id, items, tax_percent = 0, discount = 0 } = req.body;
     const invoiceNumber = await generateInvoiceNumber();
     let subtotal = 0;
     const itemRows = (items || []).map((it) => {
@@ -152,12 +133,11 @@ async function create(req, res, next) {
     const total = Math.max(0, subtotal + taxAmount - parseFloat(discount || 0));
 
     const [result] = await pool.execute(
-      `INSERT INTO invoices (invoice_number, patient_id, doctor_id, appointment_id, subtotal, tax_percent, tax_amount, discount, total, payment_status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      `INSERT INTO invoices (invoice_number, patient_id, appointment_id, subtotal, tax_percent, tax_amount, discount, total, payment_status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         invoiceNumber,
         patient_id,
-        doctor_id || null,
         appointment_id || null,
         subtotal,
         tax_percent,
@@ -257,7 +237,7 @@ async function downloadPdf(req, res, next) {
        FROM invoices i
        JOIN patients p ON i.patient_id = p.id
        LEFT JOIN appointments a ON i.appointment_id = a.id
-       LEFT JOIN users u ON COALESCE(i.doctor_id, a.doctor_id) = u.id
+       LEFT JOIN users u ON a.doctor_id = u.id
        LEFT JOIN users creator ON i.created_by = creator.id
        WHERE i.id = ? AND i.deleted_at IS NULL`,
       [req.params.id]

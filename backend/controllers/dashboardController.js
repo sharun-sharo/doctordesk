@@ -63,12 +63,12 @@ async function getStats(req, res, next) {
     const revenueParams = [];
     if (isDoctorOrAdmin) {
       revenueQuery =
-        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND a.doctor_id = ?';
-      revenueParams.push(userId);
+        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL WHERE i.deleted_at IS NULL AND (i.doctor_id = ? OR a.doctor_id = ?)';
+      revenueParams.push(userId, userId);
     } else if (isReceptionistOrAssistant) {
       revenueQuery =
-        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))';
-      revenueParams.push(userId, req.user.assignedAdminId, req.user.assignedAdminId);
+        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL WHERE i.deleted_at IS NULL AND ((i.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (i.doctor_id = ? AND ? IS NOT NULL)) OR (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)))';
+      revenueParams.push(userId, req.user.assignedAdminId, req.user.assignedAdminId, userId, req.user.assignedAdminId, req.user.assignedAdminId);
     }
     const [revenue] = await pool.execute(revenueQuery, revenueParams);
 
@@ -151,28 +151,26 @@ async function getRevenueChart(req, res, next) {
         query = `
           SELECT DATE(i.created_at) AS d, SUM(i.total) AS revenue
           FROM invoices i
-          INNER JOIN appointments a ON i.appointment_id = a.id
-          INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
-          WHERE i.deleted_at IS NULL AND a.doctor_id = ?
+          LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL
+          WHERE i.deleted_at IS NULL AND (i.doctor_id = ? OR a.doctor_id = ?)
           AND DATE(i.created_at) BETWEEN
             DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
             AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY)
           GROUP BY DATE(i.created_at)
         `;
-        params.push(userId);
+        params.push(userId, userId);
       } else if (isReceptionistOrAssistant) {
         query = `
           SELECT DATE(i.created_at) AS d, SUM(i.total) AS revenue
           FROM invoices i
-          INNER JOIN appointments a ON i.appointment_id = a.id
-          INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
-          WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))
+          LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL
+          WHERE i.deleted_at IS NULL AND ((i.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (i.doctor_id = ? AND ? IS NOT NULL)) OR (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)))
           AND DATE(i.created_at) BETWEEN
             DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
             AND DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 6 DAY)
           GROUP BY DATE(i.created_at)
         `;
-        params.push(userId, req.user.assignedAdminId, req.user.assignedAdminId);
+        params.push(userId, req.user.assignedAdminId, req.user.assignedAdminId, userId, req.user.assignedAdminId, req.user.assignedAdminId);
       }
       const [rows] = await pool.execute(query, params);
       const byDate = {};
@@ -200,24 +198,22 @@ async function getRevenueChart(req, res, next) {
       query = `
         SELECT DATE_FORMAT(i.created_at, '%Y-%m') AS month, SUM(i.total) AS revenue
         FROM invoices i
-        INNER JOIN appointments a ON i.appointment_id = a.id
-        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
-        WHERE i.deleted_at IS NULL AND a.doctor_id = ?
+        LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL
+        WHERE i.deleted_at IS NULL AND (i.doctor_id = ? OR a.doctor_id = ?)
         AND i.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
         GROUP BY DATE_FORMAT(i.created_at, '%Y-%m') ORDER BY month
       `;
-      params.unshift(userId);
+      params.unshift(userId, userId);
     } else if (isReceptionistOrAssistant) {
       query = `
         SELECT DATE_FORMAT(i.created_at, '%Y-%m') AS month, SUM(i.total) AS revenue
         FROM invoices i
-        INNER JOIN appointments a ON i.appointment_id = a.id
-        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
-        WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))
+        LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL
+        WHERE i.deleted_at IS NULL AND ((i.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (i.doctor_id = ? AND ? IS NOT NULL)) OR (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)))
         AND i.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
         GROUP BY DATE_FORMAT(i.created_at, '%Y-%m') ORDER BY month
       `;
-      params.unshift(userId, req.user.assignedAdminId, req.user.assignedAdminId);
+      params.unshift(userId, req.user.assignedAdminId, req.user.assignedAdminId, userId, req.user.assignedAdminId, req.user.assignedAdminId);
     } else {
       query += ' GROUP BY DATE_FORMAT(created_at, \'%Y-%m\') ORDER BY month';
     }

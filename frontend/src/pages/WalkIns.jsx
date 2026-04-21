@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
@@ -15,7 +15,9 @@ export default function WalkIns() {
   const { user, isDoctor, isAdmin, isReceptionist, isAssistantDoctor } = useAuth();
   const isDoctorOrAdmin = isDoctor || isAdmin;
   const isReceptionistOrAssistant = isReceptionist || isAssistantDoctor;
-  const [patients, setPatients] = useState([]);
+  const [patientSearchResults, setPatientSearchResults] = useState([]);
+  const [patientSearchLoading, setPatientSearchLoading] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState(null);
   const [patientSearch, setPatientSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [patientOpen, setPatientOpen] = useState(false);
@@ -40,8 +42,16 @@ export default function WalkIns() {
   const doctorIdForSubmit = isDoctor ? user?.id : form.doctor_id;
 
   useEffect(() => {
-    api.get('/patients', { params: { limit: 500 } }).then(({ data }) => setPatients(data.data.patients || [])).catch(() => setPatients([]));
-  }, []);
+    if (!patientOpen) return;
+    setPatientSearchLoading(true);
+    const params = { limit: 20 };
+    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+    api
+      .get('/patients', { params })
+      .then(({ data }) => setPatientSearchResults(data.data.patients || []))
+      .catch(() => setPatientSearchResults([]))
+      .finally(() => setPatientSearchLoading(false));
+  }, [debouncedSearch, patientOpen]);
 
   useEffect(() => {
     api.get('/users/doctors').then(({ data }) => setDoctors(data.data || [])).catch(() => setDoctors([]));
@@ -85,17 +95,7 @@ export default function WalkIns() {
       .finally(() => setLoadingList(false));
   }, [today]);
 
-  const filteredPatients = useMemo(
-    () =>
-      patients.filter(
-        (p) =>
-          !debouncedSearch.trim() ||
-          p.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-          p.phone?.includes(debouncedSearch)
-      ),
-    [patients, debouncedSearch]
-  );
-  const selectedPatient = patients.find((p) => String(p.id) === String(form.patient_id));
+
 
   const handleAddPatientClick = () => {
     setPatientOpen(false);
@@ -135,7 +135,7 @@ export default function WalkIns() {
         gender: newPatientForm.gender || undefined,
       });
       const created = data.data;
-      setPatients((prev) => [created, ...prev]);
+      setSelectedPatient(created);
       setForm((f) => ({ ...f, patient_id: created.id }));
       setAddPatientDrawerOpen(false);
       setNewPatientForm({ name: '', phone: '', custom_patient_id: '', email: '', age: '', gender: '' });
@@ -255,16 +255,19 @@ export default function WalkIns() {
                     </div>
                   </div>
                   <ul className="min-h-0 flex-1 overflow-y-auto py-1">
-                    {filteredPatients.length === 0 && !debouncedSearch.trim() ? (
-                      <li className="px-4 py-3 text-[14px] text-slate-500">No patients yet</li>
-                    ) : filteredPatients.length === 0 ? (
-                      <li className="px-4 py-4 text-center text-[14px] text-slate-500">No patient found</li>
+                    {patientSearchLoading ? (
+                      <li className="px-4 py-3 text-[14px] text-slate-500">Searching…</li>
+                    ) : patientSearchResults.length === 0 ? (
+                      <li className="px-4 py-3 text-[14px] text-slate-500">
+                        {debouncedSearch.trim() ? 'No patients found' : 'No patients yet'}
+                      </li>
                     ) : (
-                      filteredPatients.map((p) => (
-                        <li key={p.id} role="option" aria-selected={form.patient_id === p.id}>
+                      patientSearchResults.map((p) => (
+                        <li key={p.id} role="option" aria-selected={String(form.patient_id) === String(p.id)}>
                           <button
                             type="button"
                             onClick={() => {
+                              setSelectedPatient(p);
                               setForm((f) => ({ ...f, patient_id: p.id }));
                               setPatientOpen(false);
                               setPatientSearch('');

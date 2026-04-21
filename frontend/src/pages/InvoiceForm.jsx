@@ -10,26 +10,53 @@ export default function InvoiceForm() {
   const prePatient = searchParams.get('patient_id');
   const preAppointment = searchParams.get('appointment_id');
   const navigate = useNavigate();
-  const [patients, setPatients] = useState([]);
+  const [patientSearchResults, setPatientSearchResults] = useState([]);
+  const [patientSearchLoading, setPatientSearchLoading] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState(null);
   const [medicines, setMedicines] = useState([]);
   const [items, setItems] = useState([{ item_type: 'consultation', description: 'Consultation', quantity: 1, unit_price: 0 }]);
   const [form, setForm] = useState({ patient_id: prePatient || '', appointment_id: preAppointment || '', tax_percent: 0, discount: 0 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [patientSearch, setPatientSearch] = useState('');
+  const [debouncedPatientSearch, setDebouncedPatientSearch] = useState('');
   const [patientOpen, setPatientOpen] = useState(false);
   const patientRef = useRef(null);
 
   useEffect(() => {
-    Promise.all([
-      api.get('/patients', { params: { limit: 500 } }),
-      api.get('/medicines', { params: { limit: 500 } }),
-    ]).then(([p, m]) => {
-      setPatients(p.data.data.patients || []);
-      setMedicines(m.data.data.medicines || []);
-      if (prePatient || preAppointment) setForm((f) => ({ ...f, patient_id: prePatient || f.patient_id, appointment_id: preAppointment || f.appointment_id }));
-    }).finally(() => setLoading(false));
+    api.get('/medicines', { params: { limit: 500 } })
+      .then((m) => setMedicines(m.data.data.medicines || []))
+      .finally(() => setLoading(false));
+    if (prePatient || preAppointment)
+      setForm((f) => ({ ...f, patient_id: prePatient || f.patient_id, appointment_id: preAppointment || f.appointment_id }));
   }, [prePatient, preAppointment]);
+
+  // Fetch patient by ID when pre-selected from URL
+  useEffect(() => {
+    if (!form.patient_id || selectedPatient) return;
+    api.get(`/patients/${form.patient_id}`)
+      .then(({ data }) => setSelectedPatient(data.data))
+      .catch(() => {});
+  }, [form.patient_id]);
+
+  // Debounce patient search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedPatientSearch(patientSearch), 200);
+    return () => clearTimeout(t);
+  }, [patientSearch]);
+
+  // Server-side patient search
+  useEffect(() => {
+    if (!patientOpen) return;
+    setPatientSearchLoading(true);
+    const params = { limit: 20 };
+    if (debouncedPatientSearch.trim()) params.search = debouncedPatientSearch.trim();
+    api
+      .get('/patients', { params })
+      .then(({ data }) => setPatientSearchResults(data.data.patients || []))
+      .catch(() => setPatientSearchResults([]))
+      .finally(() => setPatientSearchLoading(false));
+  }, [debouncedPatientSearch, patientOpen]);
 
   useEffect(() => {
     const h = (e) => {
@@ -39,13 +66,7 @@ export default function InvoiceForm() {
     return () => document.removeEventListener('click', h);
   }, []);
 
-  const filteredPatients = patients.filter(
-    (p) =>
-      !patientSearch.trim() ||
-      p.name?.toLowerCase().includes(patientSearch.toLowerCase()) ||
-      p.phone?.includes(patientSearch)
-  );
-  const selectedPatient = patients.find((p) => String(p.id) === String(form.patient_id));
+
 
   const addItem = () => setItems((i) => [...i, { item_type: 'other', description: '', quantity: 1, unit_price: 0 }]);
   const removeItem = (idx) => setItems((i) => i.filter((_, k) => k !== idx));
@@ -155,25 +176,30 @@ export default function InvoiceForm() {
                     </div>
                   </div>
                   <ul className="max-h-56 overflow-y-auto">
-                    {filteredPatients.length === 0 ? (
-                      <li className="px-4 py-3 text-body text-[#64748B]">No patients match</li>
-                    ) : (
-                      filteredPatients.map((p) => (
-                        <li key={p.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setForm((f) => ({ ...f, patient_id: String(p.id) }));
-                              setPatientOpen(false);
-                              setPatientSearch('');
-                            }}
-                            className="w-full px-4 py-2.5 text-left text-body text-[#1E293B] transition-colors hover:bg-slate-50"
-                          >
-                            {p.name} – {p.phone}
-                          </button>
-                        </li>
-                      ))
-                    )}
+                    {patientSearchLoading ? (
+                    <li className="px-4 py-3 text-body text-[#64748B]">Searching…</li>
+                  ) : patientSearchResults.length === 0 ? (
+                    <li className="px-4 py-3 text-body text-[#64748B]">
+                      {debouncedPatientSearch.trim() ? 'No patients found' : 'No patients yet'}
+                    </li>
+                  ) : (
+                    patientSearchResults.map((p) => (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPatient(p);
+                            setForm((f) => ({ ...f, patient_id: String(p.id) }));
+                            setPatientOpen(false);
+                            setPatientSearch('');
+                          }}
+                          className="w-full px-4 py-2.5 text-left text-body text-[#1E293B] transition-colors hover:bg-slate-50"
+                        >
+                          {p.name} – {p.phone}
+                        </button>
+                      </li>
+                    ))
+                  )}
                   </ul>
                 </div>
               )}

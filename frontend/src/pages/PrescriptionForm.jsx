@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
@@ -32,7 +32,9 @@ export default function PrescriptionForm() {
   const { isDoctor, isAdmin } = useAuth();
   const isDoctorOrAdmin = isDoctor || isAdmin;
   const navigate = useNavigate();
-  const [patients, setPatients] = useState([]);
+  const [patientSearchResults, setPatientSearchResults] = useState([]);
+  const [patientSearchLoading, setPatientSearchLoading] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState(null);
   const [doctors, setDoctors] = useState([]);
   const [form, setForm] = useState({ patient_id: prePatient || '', appointment_id: preAppointment || '', diagnosis: '', notes: '', medicines: [{ name: '', dosage: '', duration: '', instructions: '' }], attachments: [] });
   const [attachmentFiles, setAttachmentFiles] = useState([]);
@@ -53,9 +55,30 @@ export default function PrescriptionForm() {
   }, [patientSearch]);
 
   useEffect(() => {
-    api.get('/patients', { params: { limit: 500 } }).then(({ data }) => setPatients(data.data.patients || []));
+    api.get('/patients', { params: { limit: 20 } }).then(({ data }) => setPatientSearchResults(data.data.patients || []));
     if (!isDoctorOrAdmin) api.get('/users/doctors').then(({ data }) => setDoctors(data.data || []));
   }, [isDoctorOrAdmin]);
+
+  // Fetch patient by ID for pre-selected patients (from URL params or edit mode)
+  useEffect(() => {
+    if (!form.patient_id || selectedPatient) return;
+    api.get(`/patients/${form.patient_id}`)
+      .then(({ data }) => setSelectedPatient(data.data))
+      .catch(() => {});
+  }, [form.patient_id]);
+
+  // Server-side search
+  useEffect(() => {
+    if (!patientOpen) return;
+    setPatientSearchLoading(true);
+    const params = { limit: 20 };
+    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+    api
+      .get('/patients', { params })
+      .then(({ data }) => setPatientSearchResults(data.data.patients || []))
+      .catch(() => setPatientSearchResults([]))
+      .finally(() => setPatientSearchLoading(false));
+  }, [debouncedSearch, patientOpen]);
 
   useEffect(() => {
     if (isEdit)
@@ -118,18 +141,7 @@ export default function PrescriptionForm() {
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, []);
 
-  const filteredPatients = useMemo(
-    () =>
-      !debouncedSearch.trim()
-        ? patients
-        : patients.filter(
-            (p) =>
-              (p.name || '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-              (p.phone || '').replace(/\s/g, '').includes(debouncedSearch.replace(/\s/g, ''))
-          ),
-    [patients, debouncedSearch]
-  );
-  const selectedPatient = patients.find((p) => String(p.id) === String(form.patient_id));
+
 
   const handleAddPatientClick = () => {
     setPatientOpen(false);
@@ -159,7 +171,7 @@ export default function PrescriptionForm() {
         gender: newPatientForm.gender || undefined,
       });
       const created = data.data;
-      setPatients((prev) => [created, ...prev]);
+      setSelectedPatient(created);
       setForm((f) => ({ ...f, patient_id: created.id }));
       setAddPatientDrawerOpen(false);
       setNewPatientForm({ name: '', phone: '', email: '', date_of_birth: '', gender: '' });
@@ -279,16 +291,19 @@ export default function PrescriptionForm() {
                 </div>
               </div>
               <ul className="min-h-0 flex-1 overflow-y-auto py-1">
-                {filteredPatients.length === 0 && !debouncedSearch.trim() ? (
-                  <li className="px-4 py-3 text-[14px] text-[#64748B]">No patients yet</li>
-                ) : filteredPatients.length === 0 ? (
-                  <li className="px-4 py-4 text-center text-[14px] text-[#64748B]">No patient found</li>
+                {patientSearchLoading ? (
+                  <li className="px-4 py-3 text-[14px] text-[#64748B]">Searching…</li>
+                ) : patientSearchResults.length === 0 ? (
+                  <li className="px-4 py-3 text-[14px] text-[#64748B]">
+                    {debouncedSearch.trim() ? 'No patients found' : 'No patients yet'}
+                  </li>
                 ) : (
-                  filteredPatients.map((p) => (
-                    <li key={p.id} role="option" aria-selected={form.patient_id === p.id}>
+                  patientSearchResults.map((p) => (
+                    <li key={p.id} role="option" aria-selected={String(form.patient_id) === String(p.id)}>
                       <button
                         type="button"
                         onClick={() => {
+                          setSelectedPatient(p);
                           setForm((f) => ({ ...f, patient_id: p.id }));
                           setPatientOpen(false);
                           setPatientSearch('');

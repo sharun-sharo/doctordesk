@@ -33,7 +33,9 @@ export default function AppointmentForm() {
   const isDoctorOrAdmin = isDoctor || isAdmin;
   const navigate = useNavigate();
   const [doctors, setDoctors] = useState([]);
-  const [patients, setPatients] = useState([]);
+  const [patientSearchResults, setPatientSearchResults] = useState([]);
+  const [patientSearchLoading, setPatientSearchLoading] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState(null);
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [form, setForm] = useState({
@@ -110,10 +112,28 @@ export default function AppointmentForm() {
       const list = Array.isArray(data?.data) ? data.data : [];
       setDoctors(list);
     }).catch(() => setDoctors([]));
-    api.get('/patients', { params: { limit: 500 } }).then(({ data }) => {
-      setPatients(data.data.patients || []);
-    });
   }, []);
+
+  // Fetch patient by ID to display name when editing or pre-selecting
+  useEffect(() => {
+    if (!form.patient_id || selectedPatient) return;
+    api.get(`/patients/${form.patient_id}`)
+      .then(({ data }) => setSelectedPatient(data.data))
+      .catch(() => {});
+  }, [form.patient_id]);
+
+  // Server-side patient search
+  useEffect(() => {
+    if (!patientOpen) return;
+    setPatientSearchLoading(true);
+    const params = { limit: 20 };
+    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+    api
+      .get('/patients', { params })
+      .then(({ data }) => setPatientSearchResults(data.data.patients || []))
+      .catch(() => setPatientSearchResults([]))
+      .finally(() => setPatientSearchLoading(false));
+  }, [debouncedSearch, patientOpen]);
 
   // Default doctor to first when doctors load on New Appointment (reception / super admin)
   useEffect(() => {
@@ -214,17 +234,7 @@ export default function AppointmentForm() {
     return () => document.removeEventListener('click', h);
   }, []);
 
-  const filteredPatients = useMemo(
-    () =>
-      patients.filter(
-        (p) =>
-          !debouncedSearch.trim() ||
-          p.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-          p.phone?.includes(debouncedSearch)
-      ),
-    [patients, debouncedSearch]
-  );
-  const selectedPatient = patients.find((p) => String(p.id) === String(form.patient_id));
+
 
   const handleAddPatientClick = () => {
     setPatientOpen(false);
@@ -262,7 +272,7 @@ export default function AppointmentForm() {
         gender: newPatientForm.gender || undefined,
       });
       const created = data.data;
-      setPatients((prev) => [created, ...prev]);
+      setSelectedPatient(created);
       setForm((f) => ({ ...f, patient_id: created.id }));
       setAddPatientDrawerOpen(false);
       setNewPatientForm({ name: '', phone: '', email: '', age: '', gender: '' });
@@ -487,20 +497,19 @@ export default function AppointmentForm() {
                             </div>
                           </div>
                           <ul className="min-h-0 flex-1 overflow-y-auto py-1">
-                            {filteredPatients.length === 0 && !debouncedSearch.trim() ? (
+                            {patientSearchLoading ? (
+                              <li className="px-4 py-3 text-[14px] text-[#64748B]">Searching…</li>
+                            ) : patientSearchResults.length === 0 ? (
                               <li className="px-4 py-3 text-[14px] text-[#64748B]">
-                                No patients yet
-                              </li>
-                            ) : filteredPatients.length === 0 ? (
-                              <li className="px-4 py-4 text-center text-[14px] text-[#64748B]">
-                                No patient found
+                                {debouncedSearch.trim() ? 'No patients found' : 'No patients yet'}
                               </li>
                             ) : (
-                              filteredPatients.map((p) => (
-                                <li key={p.id} role="option" aria-selected={form.patient_id === p.id}>
+                              patientSearchResults.map((p) => (
+                                <li key={p.id} role="option" aria-selected={String(form.patient_id) === String(p.id)}>
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      setSelectedPatient(p);
                                       setForm((f) => ({ ...f, patient_id: p.id }));
                                       setPatientOpen(false);
                                       setPatientSearch('');

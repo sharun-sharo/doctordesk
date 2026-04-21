@@ -138,7 +138,7 @@ async function list(req, res, next) {
   try {
     await ensureCustomPatientIdColumn();
     const { search, gender, age_min, age_max, page = 1, limit = 20, sort = 'patient_id', order = 'asc' } = req.query;
-    const perPage = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
+    const perPage = Math.max(1, parseInt(limit, 10) || 20);
     const offset = (Math.max(0, (Math.max(1, parseInt(page, 10) || 1) - 1)) * perPage) | 0;
     const { where, params } = buildPatientWhere({ search, gender, age_min, age_max }, req.user.roleId, req.user.id, req.user.assignedAdminId);
     const orderBy = getPatientOrder(sort, order);

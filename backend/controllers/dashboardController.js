@@ -5,10 +5,7 @@ const { ROLES } = require('../config/roles');
 function getPatientScopeForDashboard(roleId, userId, assignedAdminId = null) {
   if (roleId === ROLES.SUPER_ADMIN) return { condition: '', params: [] };
   if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
-    return {
-      condition: ' AND (p.id IN (SELECT patient_id FROM appointments WHERE doctor_id = ? AND deleted_at IS NULL) OR p.created_by = ?)',
-      params: [userId, userId],
-    };
+    return { condition: '', params: [] };
   }
   if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
     // Include patients created by assigned doctor (e.g. CSV upload) so dashboard count matches patient list.

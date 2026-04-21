@@ -345,8 +345,11 @@ async function getDoctors(req, res, next) {
     }
     if (roleId === ROLES.ADMIN || roleId === ROLES.DOCTOR) {
       const [rows] = await pool.execute(
-        `SELECT id, name, email, phone FROM users WHERE id = ? AND deleted_at IS NULL AND is_active = 1`,
-        [userId]
+        `SELECT id, name, email, phone FROM users
+         WHERE (id = ? OR (role_id = ? AND assigned_admin_id = ?))
+         AND deleted_at IS NULL AND is_active = 1
+         ORDER BY name`,
+        [userId, ROLES.ASSISTANT_DOCTOR, userId]
       );
       return res.json({ success: true, data: rows });
     }

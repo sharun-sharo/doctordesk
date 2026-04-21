@@ -129,7 +129,21 @@ function buildPatientWhere(query, roleId, userId, assignedAdminId = null) {
 function getPatientOrder(sort, order) {
   const dir = order === 'asc' ? 'ASC' : 'DESC';
   if (sort === 'name') return `p.name ${dir}`;
-  if (sort === 'patient_id') return `COALESCE(NULLIF(p.custom_patient_id, ''), CONCAT('PAT-', LPAD(p.id, 5, '0'))) ${dir}`;
+  if (sort === 'patient_id') {
+    // Natural sort for IDs like ALM-1, ALM-2, ALM-10 (not lexicographic ALM-1, ALM-10, ALM-2).
+    // Falls back to generated PAT-xxxxx when manual ID is missing.
+    return `
+      CASE
+        WHEN p.custom_patient_id IS NOT NULL AND p.custom_patient_id <> '' THEN UPPER(REGEXP_REPLACE(p.custom_patient_id, '[0-9]+$', ''))
+        ELSE 'PAT-'
+      END ${dir},
+      CASE
+        WHEN p.custom_patient_id IS NOT NULL AND p.custom_patient_id <> '' THEN CAST(COALESCE(NULLIF(REGEXP_SUBSTR(p.custom_patient_id, '[0-9]+$'), ''), '0') AS UNSIGNED)
+        ELSE p.id
+      END ${dir},
+      p.id ${dir}
+    `;
+  }
   if (sort === 'age') return `TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) ${dir}`;
   return `p.created_at ${dir}`;
 }
@@ -418,21 +432,39 @@ function normalizeDateInput(dateStr) {
   const raw = String(dateStr || '').trim();
   if (!raw) return null;
 
+  const withoutTime = raw.replace(/\s+\d{1,2}:\d{2}(:\d{2})?(\s*[APMapm]{2})?$/, '').trim();
+  const value = withoutTime || raw;
+
   // ISO-like date from app/forms/csv template
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    const d = new Date(`${raw}T00:00:00Z`);
-    return Number.isNaN(d.getTime()) ? null : raw;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const d = new Date(`${value}T00:00:00Z`);
+    return Number.isNaN(d.getTime()) ? null : value;
   }
 
-  // Spreadsheet-friendly values like 4/1/26 or 04/01/2026
-  const mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  // Excel serial date values (e.g. 45382)
+  if (/^\d+(\.\d+)?$/.test(value)) {
+    const serial = Number(value);
+    if (Number.isFinite(serial) && serial > 59) {
+      const ms = Math.round((serial - 25569) * 86400 * 1000);
+      const d = new Date(ms);
+      if (!Number.isNaN(d.getTime())) {
+        const y = d.getUTCFullYear();
+        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+    }
+  }
+
+  // Spreadsheet-friendly values like 4/1/26 or 04/01/2026 (assume month/day/year).
+  const mdy = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (!mdy) return null;
   const month = parseInt(mdy[1], 10);
   const day = parseInt(mdy[2], 10);
   let year = parseInt(mdy[3], 10);
-  if (year < 100) year += 2000;
+  if (year < 100) year += year >= 70 ? 1900 : 2000;
 
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) return null;
   const d = new Date(Date.UTC(year, month - 1, day));
   if (
     Number.isNaN(d.getTime())

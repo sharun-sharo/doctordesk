@@ -4,17 +4,23 @@ const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../config/database');
 const { logActivity } = require('../utils/activityLogger');
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 const ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY || '15m';
 const REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
 
+function getJwtSecrets() {
+  const access = String(process.env.JWT_ACCESS_SECRET || '').trim();
+  const refresh = String(process.env.JWT_REFRESH_SECRET || '').trim();
+  return { access, refresh };
+}
+
 function generateAccessToken(userId) {
-  return jwt.sign({ userId }, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRY });
+  const { access } = getJwtSecrets();
+  return jwt.sign({ userId }, access, { expiresIn: ACCESS_EXPIRY });
 }
 
 function generateRefreshToken(userId) {
-  return jwt.sign({ userId, jti: uuidv4() }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRY });
+  const { refresh } = getJwtSecrets();
+  return jwt.sign({ userId, jti: uuidv4() }, refresh, { expiresIn: REFRESH_EXPIRY });
 }
 
 async function saveRefreshToken(userId, token) {
@@ -28,7 +34,8 @@ async function saveRefreshToken(userId, token) {
 
 async function login(req, res, next) {
   try {
-    if (!ACCESS_SECRET || !REFRESH_SECRET) {
+    const { access, refresh } = getJwtSecrets();
+    if (!access || !refresh) {
       return res.status(503).json({
         success: false,
         message: 'Server misconfigured: JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set in .env',
@@ -104,7 +111,14 @@ async function refresh(req, res, next) {
     if (!refreshToken) {
       return res.status(400).json({ success: false, message: 'Refresh token required' });
     }
-    const decoded = jwt.verify(refreshToken, REFRESH_SECRET);
+    const { refresh } = getJwtSecrets();
+    if (!refresh) {
+      return res.status(503).json({
+        success: false,
+        message: 'Server misconfigured: JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set in .env',
+      });
+    }
+    const decoded = jwt.verify(refreshToken, refresh);
     const [rows] = await pool.execute(
       'SELECT id FROM refresh_tokens WHERE user_id = ? AND token = ? AND expires_at > NOW()',
       [decoded.userId, refreshToken]

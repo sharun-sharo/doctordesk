@@ -14,7 +14,14 @@ const authenticate = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Access token required' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    const accessSecret = String(process.env.JWT_ACCESS_SECRET || '').trim();
+    if (!accessSecret) {
+      return res.status(503).json({
+        success: false,
+        message: 'Server misconfigured: JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set in .env',
+      });
+    }
+    const decoded = jwt.verify(token, accessSecret);
 
     const [rows] = await pool.execute(
       `SELECT u.id, u.email, u.name, u.phone, u.whatsapp_phone, u.role_id, u.assigned_admin_id, u.is_active, u.deleted_at, r.name AS role_name

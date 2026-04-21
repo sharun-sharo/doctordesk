@@ -36,9 +36,11 @@ async function list(req, res, next) {
   try {
     const { patient_id, payment_status, page = 1, limit = 20 } = req.query;
     const perPage = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
-    const offset = (Math.max(0, (Math.max(1, parseInt(page, 10) || 1) - 1)) * perPage) | 0;
+    const offset = Math.max(0, (parseInt(page, 10) - 1) * perPage);
+
     const conditions = ['i.deleted_at IS NULL'];
     const params = [];
+
     if (patient_id) {
       conditions.push('i.patient_id = ?');
       params.push(patient_id);
@@ -47,45 +49,56 @@ async function list(req, res, next) {
       conditions.push('i.payment_status = ?');
       params.push(payment_status);
     }
+
     let join = '';
-    if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
+    const userId = req.user.id;
+    const roleId = req.user.roleId;
+
+    if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
       join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
-      conditions.push('(i.doctor_id = ? OR (i.appointment_id IS NOT NULL AND a.doctor_id = ?))');
-      params.push(req.user.id, req.user.id);
-    } else if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
+      conditions.push('(i.doctor_id = ? OR a.doctor_id = ? OR (i.doctor_id IS NULL AND i.appointment_id IS NULL AND i.created_by = ?))');
+      params.push(userId, userId, userId);
+    } else if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
       join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
-      const docSelect = 'SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?';
-      conditions.push(`
-        (i.doctor_id IN (${docSelect}) OR (i.doctor_id = ? AND ? IS NOT NULL))
-        OR (a.id IS NOT NULL AND (a.doctor_id IN (${docSelect}) OR (a.doctor_id = ? AND ? IS NOT NULL)))
+      const assignedAdminId = req.user.assignedAdminId;
+      conditions.push(`(
+        i.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)
+        OR (i.doctor_id = ? AND ? IS NOT NULL)
+        OR a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?)
+        OR (a.doctor_id = ? AND ? IS NOT NULL)
         OR (i.doctor_id IS NULL AND i.appointment_id IS NULL AND i.created_by = ?)
-      `);
-      params.push(req.user.id, req.user.assignedAdminId, req.user.assignedAdminId, req.user.id, req.user.assignedAdminId, req.user.assignedAdminId, req.user.id);
+      )`);
+      params.push(userId, assignedAdminId, assignedAdminId, userId, assignedAdminId, assignedAdminId, userId);
     }
+
     const where = conditions.join(' AND ');
-    const allParams = [...params];
 
     const [rows] = await pool.execute(
       `SELECT i.id, i.invoice_number, i.patient_id, i.total, i.payment_status, i.paid_amount, i.created_at,
-        p.name AS patient_name
+              p.name AS patient_name
        FROM invoices i
        JOIN patients p ON i.patient_id = p.id
        ${join}
        WHERE ${where}
        ORDER BY i.created_at DESC
        LIMIT ${perPage} OFFSET ${offset}`,
-      allParams
+      params
     );
+
     const [[{ total }]] = await pool.execute(
       `SELECT COUNT(*) AS total FROM invoices i ${join} WHERE ${where}`,
-      allParams
+      params
     );
 
     res.json({
       success: true,
-      data: { invoices: rows, pagination: { page: parseInt(page, 10), limit: perPage, total } },
+      data: { 
+        invoices: rows, 
+        pagination: { page: parseInt(page, 10), limit: perPage, total } 
+      },
     });
   } catch (err) {
+    console.error('Invoice list error:', err);
     next(err);
   }
 }

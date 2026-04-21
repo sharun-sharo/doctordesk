@@ -6,15 +6,51 @@ const { pool } = require('../config/database');
 const API_PREFIX = process.env.API_PREFIX || '/api/v1';
 const CLINIC_NAME = process.env.CLINIC_NAME || 'DoctorDesk';
 
-function getClinicLogoFilename() {
+function getExtFromMime(mime) {
+  const map = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+  };
+  return map[String(mime || '').toLowerCase()] || '.png';
+}
+
+function getClinicLogoFilenameFromDisk() {
   if (!fs.existsSync(CLINIC_LOGO_DIR)) return null;
   const files = fs.readdirSync(CLINIC_LOGO_DIR);
   const logo = files.find((f) => f.toLowerCase().startsWith('logo.'));
   return logo || null;
 }
 
-function getClinicLogoPath() {
-  const filename = getClinicLogoFilename();
+async function ensureClinicLogoFileFromDb() {
+  if (!fs.existsSync(CLINIC_LOGO_DIR)) {
+    fs.mkdirSync(CLINIC_LOGO_DIR, { recursive: true });
+  }
+  const [rows] = await pool.execute(
+    'SELECT logo_data, logo_mime, logo_filename FROM clinic_settings WHERE id = 1 LIMIT 1'
+  );
+  const row = rows[0];
+  if (!row || !row.logo_data) return null;
+  const ext = path.extname(row.logo_filename || '') || getExtFromMime(row.logo_mime);
+  const safeExt = ['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext.toLowerCase()) ? ext.toLowerCase() : '.png';
+  const filename = `logo${safeExt}`;
+  const fullPath = path.join(CLINIC_LOGO_DIR, filename);
+  if (!fs.existsSync(fullPath)) {
+    fs.writeFileSync(fullPath, row.logo_data);
+  }
+  return filename;
+}
+
+async function getClinicLogoFilename() {
+  const onDisk = getClinicLogoFilenameFromDisk();
+  if (onDisk) return onDisk;
+  return ensureClinicLogoFileFromDb();
+}
+
+async function getClinicLogoPath() {
+  const filename = await getClinicLogoFilename();
   return filename ? path.join(CLINIC_LOGO_DIR, filename) : null;
 }
 
@@ -36,17 +72,33 @@ async function ensureClinicSettingsTable() {
       phone varchar(50) DEFAULT NULL,
       email varchar(255) DEFAULT NULL,
       gstin varchar(50) DEFAULT NULL,
+      logo_data longblob,
+      logo_mime varchar(100) DEFAULT NULL,
+      logo_filename varchar(255) DEFAULT NULL,
       updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  const [cols] = await pool.execute(
+    `SELECT COLUMN_NAME
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'clinic_settings'
+       AND COLUMN_NAME IN ('logo_data','logo_mime','logo_filename')`
+  );
+  const names = new Set(cols.map((c) => c.COLUMN_NAME));
+  if (!names.has('logo_data')) await pool.execute('ALTER TABLE clinic_settings ADD COLUMN logo_data LONGBLOB');
+  if (!names.has('logo_mime')) await pool.execute('ALTER TABLE clinic_settings ADD COLUMN logo_mime VARCHAR(100) DEFAULT NULL');
+  if (!names.has('logo_filename')) await pool.execute('ALTER TABLE clinic_settings ADD COLUMN logo_filename VARCHAR(255) DEFAULT NULL');
   await pool.execute('INSERT IGNORE INTO clinic_settings (id) VALUES (1)');
 }
 
 async function getSettings(req, res, next) {
   try {
+    await ensureClinicSettingsTable();
     const filename = getClinicLogoFilename();
-    const logoUrl = filename ? `${API_PREFIX}/uploads/clinic/${filename}` : null;
+    const resolvedFilename = await filename;
+    const logoUrl = resolvedFilename ? `${API_PREFIX}/uploads/clinic/${resolvedFilename}` : null;
     const business = await getClinicBusinessSettings();
     res.json({
       success: true,
@@ -69,7 +121,15 @@ async function uploadLogo(req, res, next) {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
-    const filename = getClinicLogoFilename();
+    await ensureClinicSettingsTable();
+    const fileBuffer = fs.readFileSync(req.file.path);
+    await pool.execute(
+      `UPDATE clinic_settings
+       SET logo_data = ?, logo_mime = ?, logo_filename = ?
+       WHERE id = 1`,
+      [fileBuffer, req.file.mimetype || null, req.file.filename || null]
+    );
+    const filename = await getClinicLogoFilename();
     const logoUrl = filename ? `${API_PREFIX}/uploads/clinic/${filename}` : null;
     res.json({ success: true, data: { logoUrl }, message: 'Logo updated' });
   } catch (err) {

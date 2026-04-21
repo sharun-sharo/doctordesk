@@ -288,7 +288,7 @@ async function downloadPdf(req, res, next) {
     const right = PDF_WIDTH - PDF_MARGIN;
 
     // ----- Header: logo (if uploaded) or clinic name & tagline -----
-    const logoPath = getClinicLogoPath();
+    const logoPath = await getClinicLogoPath();
     const logoWidth = 140;
     const logoMaxHeight = 44;
     if (logoPath) {

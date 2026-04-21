@@ -60,11 +60,11 @@ async function getStats(req, res, next) {
     const revenueParams = [];
     if (isDoctorOrAdmin) {
       revenueQuery =
-        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ?';
+        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND a.doctor_id = ?';
       revenueParams.push(userId);
     } else if (isReceptionistOrAssistant) {
       revenueQuery =
-        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))';
+        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))';
       revenueParams.push(userId, req.user.assignedAdminId, req.user.assignedAdminId);
     }
     const [revenue] = await pool.execute(revenueQuery, revenueParams);
@@ -147,7 +147,9 @@ async function getRevenueChart(req, res, next) {
       if (isDoctorOrAdmin) {
         query = `
           SELECT DATE(i.created_at) AS d, SUM(i.total) AS revenue
-          FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id
+          FROM invoices i
+          INNER JOIN appointments a ON i.appointment_id = a.id
+          INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
           WHERE i.deleted_at IS NULL AND a.doctor_id = ?
           AND DATE(i.created_at) BETWEEN
             DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
@@ -158,7 +160,9 @@ async function getRevenueChart(req, res, next) {
       } else if (isReceptionistOrAssistant) {
         query = `
           SELECT DATE(i.created_at) AS d, SUM(i.total) AS revenue
-          FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id
+          FROM invoices i
+          INNER JOIN appointments a ON i.appointment_id = a.id
+          INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
           WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))
           AND DATE(i.created_at) BETWEEN
             DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
@@ -192,7 +196,9 @@ async function getRevenueChart(req, res, next) {
     if (isDoctorOrAdmin) {
       query = `
         SELECT DATE_FORMAT(i.created_at, '%Y-%m') AS month, SUM(i.total) AS revenue
-        FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id
+        FROM invoices i
+        INNER JOIN appointments a ON i.appointment_id = a.id
+        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
         WHERE i.deleted_at IS NULL AND a.doctor_id = ?
         AND i.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
         GROUP BY DATE_FORMAT(i.created_at, '%Y-%m') ORDER BY month
@@ -201,7 +207,9 @@ async function getRevenueChart(req, res, next) {
     } else if (isReceptionistOrAssistant) {
       query = `
         SELECT DATE_FORMAT(i.created_at, '%Y-%m') AS month, SUM(i.total) AS revenue
-        FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id
+        FROM invoices i
+        INNER JOIN appointments a ON i.appointment_id = a.id
+        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
         WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))
         AND i.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
         GROUP BY DATE_FORMAT(i.created_at, '%Y-%m') ORDER BY month
@@ -254,7 +262,8 @@ async function getMetrics(req, res, next) {
     // Total patients this month (with appointments)
     const [totalPatientsThisMonth] = await pool.execute(
       `SELECT COUNT(DISTINCT a.patient_id) AS total FROM appointments a
-       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${baseWhere}`,
+       INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${baseWhere.replace('doctor_id', 'a.doctor_id')}`,
       baseParams
     );
 
@@ -268,25 +277,28 @@ async function getMetrics(req, res, next) {
 
     // Returning patients (2+ appointments ever)
     const retQuery = isDoctorOrAdmin
-      ? `SELECT COUNT(*) AS total FROM (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND a.doctor_id = ? GROUP BY a.patient_id HAVING COUNT(*) >= 2) t`
+      ? `SELECT COUNT(*) AS total FROM (SELECT a.patient_id FROM appointments a INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE a.deleted_at IS NULL AND a.doctor_id = ? GROUP BY a.patient_id HAVING COUNT(*) >= 2) t`
       : isReceptionistOrAssistant
-        ? `SELECT COUNT(*) AS total FROM (SELECT a.patient_id FROM appointments a WHERE a.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)) GROUP BY a.patient_id HAVING COUNT(*) >= 2) t`
-        : `SELECT COUNT(*) AS total FROM (SELECT patient_id FROM appointments WHERE deleted_at IS NULL GROUP BY patient_id HAVING COUNT(*) >= 2) t`;
+        ? `SELECT COUNT(*) AS total FROM (SELECT a.patient_id FROM appointments a INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE a.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)) GROUP BY a.patient_id HAVING COUNT(*) >= 2) t`
+        : `SELECT COUNT(*) AS total FROM (SELECT a.patient_id FROM appointments a INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE a.deleted_at IS NULL GROUP BY a.patient_id HAVING COUNT(*) >= 2) t`;
     const [returning] = await pool.execute(retQuery, (isDoctorOrAdmin || isReceptionistOrAssistant) ? (isReceptionistOrAssistant ? [userId, req.user.assignedAdminId, req.user.assignedAdminId] : [userId]) : []);
 
     // Today's appointments
     const [todayAppts] = await pool.execute(
-      `SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL
-       AND appointment_date = CURDATE() AND status IN ('scheduled','completed')${baseWhereNoAlias}`,
+      `SELECT COUNT(*) AS total FROM appointments a
+       INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
+       WHERE a.deleted_at IS NULL AND a.appointment_date = CURDATE() AND a.status IN ('scheduled','completed')${baseWhere.replace('doctor_id', 'a.doctor_id')}`,
       baseParams
     );
 
     // No-show rate
     const [noShowStats] = await pool.execute(
       `SELECT
-         SUM(CASE WHEN status = 'no_show' THEN 1 ELSE 0 END) AS no_shows,
-         SUM(CASE WHEN status IN ('scheduled','completed','no_show','cancelled') THEN 1 ELSE 0 END) AS total
-       FROM appointments WHERE deleted_at IS NULL AND appointment_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)${baseWhereNoAlias}`,
+         SUM(CASE WHEN a.status = 'no_show' THEN 1 ELSE 0 END) AS no_shows,
+         SUM(CASE WHEN a.status IN ('scheduled','completed','no_show','cancelled') THEN 1 ELSE 0 END) AS total
+       FROM appointments a
+       INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)${baseWhere.replace('doctor_id', 'a.doctor_id')}`,
       baseParams
     );
     const totalForNoShow = parseInt(noShowStats[0]?.total || 0, 10);
@@ -296,18 +308,18 @@ async function getMetrics(req, res, next) {
     // Revenue this month
     let revThisMonthQuery = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
     if (isDoctorOrAdmin) {
-      revThisMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+      revThisMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
     } else if (isReceptionistOrAssistant) {
-      revThisMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)) AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+      revThisMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)) AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
     }
     const [revThisMonth] = await pool.execute(revThisMonthQuery, (isDoctorOrAdmin || isReceptionistOrAssistant) ? (isReceptionistOrAssistant ? [userId, req.user.assignedAdminId, req.user.assignedAdminId] : [userId]) : []);
 
     // Revenue last month
     let revLastMonthQuery = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL AND created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
     if (isDoctorOrAdmin) {
-      revLastMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND i.created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+      revLastMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND i.created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
     } else if (isReceptionistOrAssistant) {
-      revLastMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)) AND i.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND i.created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+      revLastMonthQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)) AND i.created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND i.created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
     }
     const [revLastMonth] = await pool.execute(revLastMonthQuery, (isDoctorOrAdmin || isReceptionistOrAssistant) ? (isReceptionistOrAssistant ? [userId, req.user.assignedAdminId, req.user.assignedAdminId] : [userId]) : []);
 
@@ -319,7 +331,8 @@ async function getMetrics(req, res, next) {
     // Avg revenue per patient (this month)
     const [patientCountForAvg] = await pool.execute(
       `SELECT COUNT(DISTINCT a.patient_id) AS total FROM appointments a
-       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${baseWhere}`,
+       INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')${baseWhere.replace('doctor_id', 'a.doctor_id')}`,
       baseParams
     );
     const patientsWithAppts = parseInt(patientCountForAvg[0]?.total || 0, 10);
@@ -328,18 +341,18 @@ async function getMetrics(req, res, next) {
     // Year to Date revenue (from January 1st of current year)
     let yearToDateRevenueQuery = `SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL AND created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')`;
     if (isDoctorOrAdmin) {
-      yearToDateRevenueQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')`;
+      yearToDateRevenueQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND a.doctor_id = ? AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')`;
     } else if (isReceptionistOrAssistant) {
-      yearToDateRevenueQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)) AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')`;
+      yearToDateRevenueQuery = `SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)) AND i.created_at >= DATE_FORMAT(CURDATE(), '%Y-01-01')`;
     }
     const [yearToDateRevenue] = await pool.execute(yearToDateRevenueQuery, (isDoctorOrAdmin || isReceptionistOrAssistant) ? (isReceptionistOrAssistant ? [userId, req.user.assignedAdminId, req.user.assignedAdminId] : [userId]) : []);
 
     // Collection vs Pending
     let collectionQuery = `SELECT COALESCE(SUM(paid_amount), 0) AS collected, COALESCE(SUM(total - paid_amount), 0) AS pending FROM invoices WHERE deleted_at IS NULL`;
     if (isDoctorOrAdmin) {
-      collectionQuery = `SELECT COALESCE(SUM(i.paid_amount), 0) AS collected, COALESCE(SUM(i.total - i.paid_amount), 0) AS pending FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND a.doctor_id = ?`;
+      collectionQuery = `SELECT COALESCE(SUM(i.paid_amount), 0) AS collected, COALESCE(SUM(i.total - i.paid_amount), 0) AS pending FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND a.doctor_id = ?`;
     } else if (isReceptionistOrAssistant) {
-      collectionQuery = `SELECT COALESCE(SUM(i.paid_amount), 0) AS collected, COALESCE(SUM(i.total - i.paid_amount), 0) AS pending FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))`;
+      collectionQuery = `SELECT COALESCE(SUM(i.paid_amount), 0) AS collected, COALESCE(SUM(i.total - i.paid_amount), 0) AS pending FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))`;
     }
     const [collection] = await pool.execute(collectionQuery, (isDoctorOrAdmin || isReceptionistOrAssistant) ? (isReceptionistOrAssistant ? [userId, req.user.assignedAdminId, req.user.assignedAdminId] : [userId]) : []);
 
@@ -351,7 +364,9 @@ async function getMetrics(req, res, next) {
 
     // Appointment utilization (completed+scheduled this month / estimated slots)
     const [utilized] = await pool.execute(
-      `SELECT COUNT(*) AS total FROM appointments WHERE deleted_at IS NULL AND appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND status IN ('scheduled','completed')${baseWhereNoAlias}`,
+      `SELECT COUNT(*) AS total FROM appointments a
+       INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
+       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND a.status IN ('scheduled','completed')${baseWhere.replace('doctor_id', 'a.doctor_id')}`,
       baseParams
     );
     const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
@@ -421,10 +436,13 @@ async function getDailyAppointmentDistribution(req, res, next) {
     const baseWhere = isDoctorOrAdmin ? ' AND doctor_id = ?' : (isReceptionistOrAssistant ? ' AND (doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (doctor_id = ? AND ? IS NOT NULL))' : '');
     const params = (isDoctorOrAdmin || isReceptionistOrAssistant) ? (isReceptionistOrAssistant ? [userId, req.user.assignedAdminId, req.user.assignedAdminId] : [userId]) : [];
     const [rows] = await pool.execute(
-      `SELECT DAYNAME(appointment_date) AS day_name, COUNT(*) AS count
-       FROM appointments WHERE deleted_at IS NULL
-       AND appointment_date >= DATE_SUB(CURDATE(), INTERVAL 4 WEEK)${baseWhere}
-       GROUP BY DAYOFWEEK(appointment_date), day_name ORDER BY DAYOFWEEK(appointment_date)`,
+      `SELECT DAYNAME(a.appointment_date) AS day_name, COUNT(*) AS count
+       FROM appointments a
+       INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
+       WHERE a.deleted_at IS NULL
+       AND a.status IN ('scheduled', 'completed')
+       AND a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL 4 WEEK)${baseWhere.replace('doctor_id', 'a.doctor_id')}
+       GROUP BY DAYOFWEEK(a.appointment_date), day_name ORDER BY DAYOFWEEK(a.appointment_date)`,
       params
     );
     const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];

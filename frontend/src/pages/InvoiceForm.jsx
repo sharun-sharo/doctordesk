@@ -13,9 +13,16 @@ export default function InvoiceForm() {
   const [patientSearchResults, setPatientSearchResults] = useState([]);
   const [patientSearchLoading, setPatientSearchLoading] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [doctors, setDoctors] = useState([]);
   const [medicines, setMedicines] = useState([]);
   const [items, setItems] = useState([{ item_type: 'consultation', description: 'Consultation', quantity: 1, unit_price: 0 }]);
-  const [form, setForm] = useState({ patient_id: prePatient || '', appointment_id: preAppointment || '', tax_percent: 0, discount: 0 });
+  const [form, setForm] = useState({
+    patient_id: prePatient || '',
+    doctor_id: '',
+    appointment_id: preAppointment || '',
+    tax_percent: 0,
+    discount: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [patientSearch, setPatientSearch] = useState('');
@@ -27,6 +34,9 @@ export default function InvoiceForm() {
     api.get('/medicines', { params: { limit: 500 } })
       .then((m) => setMedicines(m.data.data.medicines || []))
       .finally(() => setLoading(false));
+    api.get('/users/doctors')
+      .then(({ data }) => setDoctors(data.data || []))
+      .catch(() => setDoctors([]));
     if (prePatient || preAppointment)
       setForm((f) => ({ ...f, patient_id: prePatient || f.patient_id, appointment_id: preAppointment || f.appointment_id }));
   }, [prePatient, preAppointment]);
@@ -97,6 +107,7 @@ export default function InvoiceForm() {
     }
     const payload = {
       patient_id: parseInt(form.patient_id, 10),
+      doctor_id: form.doctor_id ? parseInt(form.doctor_id, 10) : undefined,
       appointment_id: form.appointment_id ? parseInt(form.appointment_id, 10) : undefined,
       items: items.map((it) => ({
         ...it,
@@ -147,62 +158,81 @@ export default function InvoiceForm() {
               Patient Details
             </h2>
             <p className="mb-5 text-body text-[#64748B]">Select the patient for this invoice.</p>
-            <div className="relative max-w-md" ref={patientRef}>
-              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[#64748B]">
-                Patient *
-              </label>
-              <button
-                type="button"
-                onClick={() => setPatientOpen((o) => !o)}
-                className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-left text-body text-[#1E293B] transition-all duration-200 hover:border-slate-300 focus:border-[#0EA5A4] focus:outline-none focus:ring-2 focus:ring-[#0EA5A4]/20"
-              >
-                <span className={selectedPatient ? '' : 'text-[#64748B]'}>
-                  {selectedPatient ? `${selectedPatient.name} – ${selectedPatient.phone}` : 'Select patient'}
-                </span>
-                <ChevronDown className="h-5 w-5 shrink-0 text-slate-400" />
-              </button>
-              {patientOpen && (
-                <div className="absolute top-full left-0 right-0 z-10 mt-1 rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
-                  <div className="border-b border-slate-100 px-2 pb-2">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="text"
-                        value={patientSearch}
-                        onChange={(e) => setPatientSearch(e.target.value)}
-                        placeholder="Search by name or phone…"
-                        className="h-10 w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-body text-[#1E293B] placeholder-[#94a3b8] focus:border-[#0EA5A4] focus:outline-none focus:ring-2 focus:ring-[#0EA5A4]/20"
-                      />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="relative max-w-md" ref={patientRef}>
+                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[#64748B]">
+                  Patient *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setPatientOpen((o) => !o)}
+                  className="flex h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-left text-body text-[#1E293B] transition-all duration-200 hover:border-slate-300 focus:border-[#0EA5A4] focus:outline-none focus:ring-2 focus:ring-[#0EA5A4]/20"
+                >
+                  <span className={selectedPatient ? '' : 'text-[#64748B]'}>
+                    {selectedPatient ? `${selectedPatient.name} – ${selectedPatient.phone}` : 'Select patient'}
+                  </span>
+                  <ChevronDown className="h-5 w-5 shrink-0 text-slate-400" />
+                </button>
+                {patientOpen && (
+                  <div className="absolute top-full left-0 right-0 z-10 mt-1 rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
+                    <div className="border-b border-slate-100 px-2 pb-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={patientSearch}
+                          onChange={(e) => setPatientSearch(e.target.value)}
+                          placeholder="Search by name or phone…"
+                          className="h-10 w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-body text-[#1E293B] placeholder-[#94a3b8] focus:border-[#0EA5A4] focus:outline-none focus:ring-2 focus:ring-[#0EA5A4]/20"
+                        />
+                      </div>
                     </div>
-                  </div>
-                  <ul className="max-h-56 overflow-y-auto">
-                    {patientSearchLoading ? (
-                    <li className="px-4 py-3 text-body text-[#64748B]">Searching…</li>
-                  ) : patientSearchResults.length === 0 ? (
-                    <li className="px-4 py-3 text-body text-[#64748B]">
-                      {debouncedPatientSearch.trim() ? 'No patients found' : 'No patients yet'}
-                    </li>
-                  ) : (
-                    patientSearchResults.map((p) => (
-                      <li key={p.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedPatient(p);
-                            setForm((f) => ({ ...f, patient_id: String(p.id) }));
-                            setPatientOpen(false);
-                            setPatientSearch('');
-                          }}
-                          className="w-full px-4 py-2.5 text-left text-body text-[#1E293B] transition-colors hover:bg-slate-50"
-                        >
-                          {p.name} – {p.phone}
-                        </button>
+                    <ul className="max-h-56 overflow-y-auto">
+                      {patientSearchLoading ? (
+                      <li className="px-4 py-3 text-body text-[#64748B]">Searching…</li>
+                    ) : patientSearchResults.length === 0 ? (
+                      <li className="px-4 py-3 text-body text-[#64748B]">
+                        {debouncedPatientSearch.trim() ? 'No patients found' : 'No patients yet'}
                       </li>
-                    ))
-                  )}
-                  </ul>
-                </div>
-              )}
+                    ) : (
+                      patientSearchResults.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPatient(p);
+                              setForm((f) => ({ ...f, patient_id: String(p.id) }));
+                              setPatientOpen(false);
+                              setPatientSearch('');
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-body text-[#1E293B] transition-colors hover:bg-slate-50"
+                          >
+                            {p.name} – {p.phone}
+                          </button>
+                        </li>
+                      ))
+                    )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              <div className="max-w-md">
+                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[#64748B]">
+                  Doctor
+                </label>
+                <select
+                  value={form.doctor_id}
+                  onChange={(e) => setForm((f) => ({ ...f, doctor_id: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-body text-[#1E293B] transition-all duration-200 hover:border-slate-300 focus:border-[#0EA5A4] focus:outline-none focus:ring-2 focus:ring-[#0EA5A4]/20"
+                >
+                  <option value="">Select doctor</option>
+                  {doctors.map((d) => (
+                    <option key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </section>
 

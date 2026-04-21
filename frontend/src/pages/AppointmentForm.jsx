@@ -561,40 +561,35 @@ export default function AppointmentForm() {
                         </div>
                       </div>
                     )}
-                {!isDoctorOrAdmin && (
-                    <div className="sm:col-span-2">
-                      <label htmlFor="field-doctor_id" className="mb-1.5 block text-sm font-medium text-gray-700">
-                        Doctor <span className="text-red-500" aria-hidden>*</span>
-                      </label>
-                      <select
-                        id="field-doctor_id"
-                        name="doctor_id"
-                        value={form.doctor_id == null || form.doctor_id === '' ? '' : String(form.doctor_id)}
-                        onChange={handleChange}
-                        className={inputBase}
-                        required
-                        aria-label="Select doctor"
-                        aria-describedby={errors.doctor_id ? 'error-doctor_id' : undefined}
-                        aria-invalid={!!errors.doctor_id}
-                      >
-                        <option value="">Select a doctor</option>
-                        {doctors.length > 0 && (
-                          <option value={String(doctors[0].id)}>
-                            {doctors[0].name}
-                          </option>
-                        )}
-                        {doctors.slice(1).map((d) => (
-                          <option key={d.id} value={String(d.id)}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </select>
-                      {errors.doctor_id && (
-                        <p id="error-doctor_id" className="mt-1.5 text-sm text-red-600" role="alert">
-                          {errors.doctor_id}
-                        </p>
-                      )}
-                    </div>
+                {(doctors.length > 1 || !isDoctor) && (
+                  <div className="sm:col-span-2">
+                    <label htmlFor="field-doctor_id" className="mb-1.5 block text-sm font-medium text-gray-700">
+                      Doctor <span className="text-red-500" aria-hidden>*</span>
+                    </label>
+                    <select
+                      id="field-doctor_id"
+                      name="doctor_id"
+                      value={form.doctor_id == null || form.doctor_id === '' ? '' : String(form.doctor_id)}
+                      onChange={handleChange}
+                      className={inputBase}
+                      required
+                      aria-label="Select doctor"
+                      aria-describedby={errors.doctor_id ? 'error-doctor_id' : undefined}
+                      aria-invalid={!!errors.doctor_id}
+                    >
+                      <option value="">Select a doctor</option>
+                      {doctors.map((d) => (
+                        <option key={d.id} value={String(d.id)}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.doctor_id && (
+                      <p id="error-doctor_id" className="mt-1.5 text-sm text-red-600" role="alert">
+                        {errors.doctor_id}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             </section>

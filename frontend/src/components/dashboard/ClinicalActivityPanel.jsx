@@ -22,6 +22,7 @@ const TAB_VALUES = [
   { value: 'upcoming' },
   { value: 'completed' },
   { value: 'cancelled' },
+  { value: 'today_walkins' },
 ];
 
 const STATUS_CONFIG = {
@@ -169,6 +170,13 @@ export default function ClinicalActivityPanel({
       case 'cancelled':
         list = appointments.filter((a) => a.status === 'cancelled' && normalizeDate(a.appointment_date) === today);
         break;
+      case 'today_walkins':
+        list = appointments.filter(
+          (a) =>
+            normalizeDate(a.appointment_date) === today
+            && String(a.notes || '').toLowerCase().includes('walk-in')
+        );
+        break;
       default:
         list = appointments;
     }
@@ -182,16 +190,29 @@ export default function ClinicalActivityPanel({
     );
     const completedToday = appointments.filter((a) => a.status === 'completed' && normalizeDate(a.appointment_date) === today);
     const cancelledToday = appointments.filter((a) => a.status === 'cancelled' && normalizeDate(a.appointment_date) === today);
+    const walkinsToday = appointments.filter(
+      (a) =>
+        normalizeDate(a.appointment_date) === today
+        && String(a.notes || '').toLowerCase().includes('walk-in')
+    );
     return {
       all: onTabChange != null ? allTotal : appointments.length,
       today: todayList.length,
       upcoming: upcomingList.length,
       completed: completedToday.length,
       cancelled: cancelledToday.length,
+      today_walkins: walkinsToday.length,
     };
   }, [appointments, today, onTabChange, allTotal]);
 
-  const tabLabels = { all: 'All-Time', today: "Today's Appointments", upcoming: 'Upcoming', completed: 'Completed Today', cancelled: 'Cancelled Today' };
+  const tabLabels = {
+    all: 'All-Time',
+    today: "Today's Appointments",
+    upcoming: 'Upcoming',
+    completed: 'Completed Today',
+    cancelled: 'Cancelled Today',
+    today_walkins: 'Today Walk-ins',
+  };
   const tabOptions = useMemo(
     () =>
       TAB_VALUES.map(({ value }) => ({
@@ -273,6 +294,8 @@ export default function ClinicalActivityPanel({
                 ? 'No appointments today.'
                 : activeTab === 'upcoming'
                   ? 'No upcoming appointments.'
+                  : activeTab === 'today_walkins'
+                    ? 'No walk-ins today.'
                   : activeTab === 'completed' || activeTab === 'cancelled'
                     ? `No ${activeTab} appointments today.`
                     : `No ${activeTab} appointments.`}

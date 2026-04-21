@@ -49,9 +49,8 @@ export default function Appointments() {
     };
     const d = new Date();
     const from = new Date(d);
-    from.setDate(from.getDate() - 14);
+    from.setDate(from.getDate() - 7);
     const to = new Date(d);
-    to.setDate(to.getDate() + 14);
     return {
       status: '',
       date_from: toYMD(from),

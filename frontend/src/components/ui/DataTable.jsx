@@ -16,6 +16,13 @@ export default function DataTable({
   onSortChange,
   stickyHeader = true,
 }) {
+  const totalPages = pagination ? Math.max(1, Math.ceil((pagination.total || 0) / (pagination.limit || 1))) : 1;
+  const currentPage = pagination?.page || 1;
+  const pageWindowStart = Math.max(1, currentPage - 2);
+  const pageWindowEnd = Math.min(totalPages, currentPage + 2);
+  const pageButtons = [];
+  for (let p = pageWindowStart; p <= pageWindowEnd; p += 1) pageButtons.push(p);
+
   const handleSort = (col) => {
     if (!col.sortKey || !onSortChange) return;
     const nextOrder = sortKey === col.sortKey && sortOrder === 'asc' ? 'desc' : 'asc';
@@ -125,6 +132,22 @@ export default function DataTable({
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
+            {pageButtons.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => onPageChange?.(p)}
+                className={`inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-lg border px-2 text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:ring-offset-1 active:scale-95 ${
+                  p === currentPage
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+                aria-label={`Go to page ${p}`}
+                aria-current={p === currentPage ? 'page' : undefined}
+              >
+                {p}
+              </button>
+            ))}
             <span className="min-w-[4rem] px-2 text-center text-sm font-medium text-slate-600" aria-live="polite">
               Page {pagination.page}
             </span>

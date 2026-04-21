@@ -288,7 +288,7 @@ async function downloadPdf(req, res, next) {
     const right = PDF_WIDTH - PDF_MARGIN;
 
     // ----- Header: logo (if uploaded) or clinic name & tagline -----
-    const logoPath = await getClinicLogoPath();
+    const logoPath = await getClinicLogoPath(req.user?.id || null);
     const logoWidth = 140;
     const logoMaxHeight = 44;
     if (logoPath) {
@@ -305,7 +305,7 @@ async function downloadPdf(req, res, next) {
     }
     doc.fontSize(9).fillColor('#64748b').text('Medical Invoice', left, y);
     y += 14;
-    const business = await getClinicBusinessSettings();
+    const business = await getClinicBusinessSettings(req.user?.id || null);
     const hasBusiness = business.address || business.phone || business.email || business.gstin;
     if (hasBusiness) {
       const lines = [];

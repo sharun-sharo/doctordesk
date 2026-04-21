@@ -5,7 +5,10 @@ const { ROLES } = require('../config/roles');
 function getPatientScopeForDashboard(roleId, userId, assignedAdminId = null) {
   if (roleId === ROLES.SUPER_ADMIN) return { condition: '', params: [] };
   if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
-    return { condition: '', params: [] };
+    return {
+      condition: ' AND (p.id IN (SELECT patient_id FROM appointments WHERE doctor_id = ? AND deleted_at IS NULL) OR p.created_by = ?)',
+      params: [userId, userId],
+    };
   }
   if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
     // Include patients created by assigned doctor (e.g. CSV upload) so dashboard count matches patient list.
@@ -84,7 +87,7 @@ async function getStats(req, res, next) {
     );
 
     const data = {
-      totalPatients: 189,
+      totalPatients: patientsCount[0].total,
       upcomingAppointments: appointmentsCount[0].total,
       todayAppointments: todayAppointments[0].total,
       totalRevenue: parseFloat(revenue[0].total) || 0,
@@ -358,7 +361,7 @@ async function getMetrics(req, res, next) {
 
     // Avg consultation time (from completed appointments with end_time)
     const avgConsultQuery = `SELECT AVG(TIMESTAMPDIFF(MINUTE, CONCAT(a.appointment_date, ' ', a.start_time), CONCAT(a.appointment_date, ' ', COALESCE(a.end_time, ADDTIME(a.start_time, '00:30:00'))))) AS avg_mins
-       FROM appointments a WHERE a.deleted_at IS NULL AND a.status = 'completed'${baseWhere}`;
+       FROM appointments a WHERE a.deleted_at IS NULL AND a.status = 'completed'${baseWhereWithAlias}`;
     const [avgConsult] = await pool.execute(avgConsultQuery, baseParams);
     const avgConsultMins = avgConsult[0]?.avg_mins != null ? Math.round(parseFloat(avgConsult[0].avg_mins)) : null;
 
@@ -433,7 +436,7 @@ async function getDailyAppointmentDistribution(req, res, next) {
     const userId = req.user.id;
     const isDoctorOrAdmin = roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN;
     const isReceptionistOrAssistant = roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR;
-    const baseWhere = isDoctorOrAdmin ? ' AND doctor_id = ?' : (isReceptionistOrAssistant ? ' AND (doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (doctor_id = ? AND ? IS NOT NULL))' : '');
+    const baseWhereWithAlias = isDoctorOrAdmin ? ' AND a.doctor_id = ?' : (isReceptionistOrAssistant ? ' AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))' : '');
     const params = (isDoctorOrAdmin || isReceptionistOrAssistant) ? (isReceptionistOrAssistant ? [userId, req.user.assignedAdminId, req.user.assignedAdminId] : [userId]) : [];
     const [rows] = await pool.execute(
       `SELECT DAYNAME(a.appointment_date) AS day_name, COUNT(*) AS count

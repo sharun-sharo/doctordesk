@@ -176,7 +176,7 @@ export default function Appointments() {
     { key: 'appointment_date', header: 'Date', render: (v) => new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) },
     { key: 'start_time', header: 'Time', render: (v) => formatTime12h(v) },
     { key: 'patient_name', header: 'Patient' },
-    ...(!isDoctorOrAdmin ? [{ key: 'doctor_name', header: 'Doctor' }] : []),
+    ...(!isDoctor || isAdmin ? [{ key: 'doctor_name', header: 'Doctor' }] : []),
     {
       key: 'status',
       header: 'Status',

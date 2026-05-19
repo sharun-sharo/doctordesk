@@ -4,6 +4,7 @@ const { pool } = require('../config/database');
 const { logActivity } = require('../utils/activityLogger');
 const { ROLES } = require('../config/roles');
 const { UPLOAD_DIR } = require('../middleware/upload');
+const { resolveDoctorIdForBooking } = require('../utils/resolveDoctorId');
 
 function parseMedicines(medicines) {
   if (medicines === undefined || medicines === null) return [];
@@ -45,9 +46,14 @@ async function list(req, res, next) {
     const offset = (Math.max(0, (Math.max(1, parseInt(page, 10) || 1) - 1)) * perPage) | 0;
     const conditions = [];
     const params = [];
-    if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
+    if (req.user.roleId === ROLES.DOCTOR) {
       conditions.push('pr.doctor_id = ?');
       params.push(req.user.id);
+    } else if (req.user.roleId === ROLES.ADMIN) {
+      conditions.push(
+        `(pr.doctor_id = ? OR pr.doctor_id IN (SELECT id FROM users WHERE assigned_admin_id = ? AND deleted_at IS NULL))`
+      );
+      params.push(req.user.id, req.user.id);
     } else if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
       if (doctor_id) {
         conditions.push('pr.doctor_id = ?');
@@ -178,7 +184,7 @@ async function getAttachment(req, res, next) {
 async function create(req, res, next) {
   try {
     const { patient_id, appointment_id, diagnosis, notes, medicines } = req.body;
-    const doctorId = (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) ? req.user.id : req.body.doctor_id;
+    const doctorId = await resolveDoctorIdForBooking(req, req.body.doctor_id);
     if (!doctorId) {
       return res.status(400).json({ success: false, message: 'Doctor required' });
     }

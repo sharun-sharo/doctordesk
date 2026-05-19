@@ -1,13 +1,21 @@
 const { pool } = require('../config/database');
 const { ROLES } = require('../config/roles');
+const { appointmentDoctorFilter, invoiceBillingDoctorFilter } = require('../utils/clinicScope');
 
 /** Patient scope for dashboard counts/charts: same as patient list (assigned doctors only). assignedAdminId fallback for staff when receptionist_doctors is empty. */
 function getPatientScopeForDashboard(roleId, userId, assignedAdminId = null) {
   if (roleId === ROLES.SUPER_ADMIN) return { condition: '', params: [] };
-  if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
+  if (roleId === ROLES.DOCTOR) {
     return {
       condition: ' AND (p.id IN (SELECT patient_id FROM appointments WHERE doctor_id = ? AND deleted_at IS NULL) OR p.created_by = ?)',
       params: [userId, userId],
+    };
+  }
+  if (roleId === ROLES.ADMIN) {
+    return {
+      condition:
+        ' AND (p.id IN (SELECT patient_id FROM appointments WHERE deleted_at IS NULL AND (doctor_id = ? OR doctor_id IN (SELECT id FROM users WHERE assigned_admin_id = ? AND deleted_at IS NULL))) OR p.created_by = ?)',
+      params: [userId, userId, userId],
     };
   }
   if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
@@ -24,16 +32,9 @@ async function getStats(req, res, next) {
   try {
     const userId = req.user.id;
     const roleId = req.user.roleId;
-    // Doctor/Admin: only their data. Receptionist/Assistant: only assigned doctors' appointments.
-    const isDoctorOrAdmin = roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN;
     const isReceptionistOrAssistant = roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR;
-    const doctorId = isDoctorOrAdmin ? userId : null;
-    const receptionistFilter = isReceptionistOrAssistant
-      ? ' AND (doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (doctor_id = ? AND ? IS NOT NULL))'
-      : '';
-    const receptionistFilterWithAlias = isReceptionistOrAssistant
-      ? ' AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))'
-      : '';
+    const apptFilter = appointmentDoctorFilter(roleId, userId, req.user.assignedAdminId, 'a');
+    const invFilter = invoiceBillingDoctorFilter(roleId, userId, req.user.assignedAdminId);
 
     const patientScope = getPatientScopeForDashboard(roleId, userId, req.user.assignedAdminId);
     const [patientsCount] = await pool.execute(
@@ -48,43 +49,23 @@ async function getStats(req, res, next) {
     let todaySql = `SELECT COUNT(*) AS total FROM appointments a
        INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
        WHERE a.deleted_at IS NULL AND a.appointment_date = CURDATE() AND a.status IN ('scheduled','completed')`;
-    const appointmentParams = doctorId != null ? [doctorId] : (isReceptionistOrAssistant ? [userId, req.user.assignedAdminId, req.user.assignedAdminId] : []);
-    if (doctorId != null) {
-      upcomingSql += ' AND a.doctor_id = ?';
-      todaySql += ' AND a.doctor_id = ?';
-    } else if (isReceptionistOrAssistant) {
-      upcomingSql += receptionistFilterWithAlias;
-      todaySql += receptionistFilterWithAlias;
-    }
+    upcomingSql += apptFilter.sql;
+    todaySql += apptFilter.sql;
+    const appointmentParams = apptFilter.params;
     const [appointmentsCount] = await pool.execute(upcomingSql, appointmentParams);
     const [todayAppointments] = await pool.execute(todaySql, appointmentParams);
 
-    let revenueQuery = 'SELECT COALESCE(SUM(total), 0) AS total FROM invoices WHERE deleted_at IS NULL';
-    const revenueParams = [];
-    if (isDoctorOrAdmin) {
-      revenueQuery =
-        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND a.doctor_id = ?';
-      revenueParams.push(userId);
-    } else if (isReceptionistOrAssistant) {
-      revenueQuery =
-        'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i INNER JOIN appointments a ON i.appointment_id = a.id INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))';
-      revenueParams.push(userId, req.user.assignedAdminId, req.user.assignedAdminId);
-    }
-    const [revenue] = await pool.execute(revenueQuery, revenueParams);
+    let revenueQuery =
+      'SELECT COALESCE(SUM(i.total), 0) AS total FROM invoices i LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL INNER JOIN patients p ON i.patient_id = p.id AND p.deleted_at IS NULL WHERE i.deleted_at IS NULL';
+    revenueQuery += invFilter.sql;
+    const [revenue] = await pool.execute(revenueQuery, invFilter.params);
 
     let appointmentsQuery = `
       SELECT COUNT(*) AS total FROM appointments a
       INNER JOIN patients p ON a.patient_id = p.id AND p.deleted_at IS NULL
       WHERE a.deleted_at IS NULL AND a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`;
-    if (isDoctorOrAdmin) {
-      appointmentsQuery += ' AND a.doctor_id = ?';
-    } else if (isReceptionistOrAssistant) {
-      appointmentsQuery += ' AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL))';
-    }
-    const [last30Appointments] = await pool.execute(
-      appointmentsQuery,
-      isDoctorOrAdmin ? [userId] : (isReceptionistOrAssistant ? [userId, req.user.assignedAdminId, req.user.assignedAdminId] : [])
-    );
+    appointmentsQuery += apptFilter.sql;
+    const [last30Appointments] = await pool.execute(appointmentsQuery, apptFilter.params);
 
     const data = {
       totalPatients: patientsCount[0].total,

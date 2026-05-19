@@ -39,7 +39,7 @@ export default function WalkIns() {
   const patientRef = useRef(null);
 
   const today = new Date().toISOString().slice(0, 10);
-  const doctorIdForSubmit = isDoctor ? user?.id : form.doctor_id;
+  const doctorIdForSubmit = isDoctor && !isAdmin ? user?.id : form.doctor_id;
 
   useEffect(() => {
     if (!patientOpen) return;
@@ -58,10 +58,10 @@ export default function WalkIns() {
   }, []);
 
   useEffect(() => {
-    if (isDoctorOrAdmin && user?.id) {
-      setForm((f) => ({ ...f, doctor_id: user.id }));
+    if (isDoctor && !isAdmin && user?.id) {
+      setForm((f) => (f.doctor_id ? f : { ...f, doctor_id: user.id }));
     }
-  }, [isDoctorOrAdmin, user?.id]);
+  }, [isDoctor, isAdmin, user?.id]);
 
   useEffect(() => {
     if (isReceptionistOrAssistant && doctors.length > 0) {
@@ -185,7 +185,7 @@ export default function WalkIns() {
         notes: 'Walk-in',
       });
       toast.success('Walk-in registered');
-      setForm((f) => ({ patient_id: '', doctor_id: isDoctor ? user?.id : f.doctor_id }));
+      setForm((f) => ({ patient_id: '', doctor_id: isDoctor && !isAdmin ? user?.id : f.doctor_id }));
       setPatientSearch('');
       const { data: listData } = await api.get('/appointments', {
         params: { date_from: today, date_to: today, limit: 50, page: 1 },

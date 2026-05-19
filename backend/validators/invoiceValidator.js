@@ -3,6 +3,7 @@ const { body } = require('express-validator');
 const createRules = [
   body('patient_id').isInt({ min: 1 }),
   body('appointment_id').optional().isInt({ min: 1 }),
+  body('doctor_id').optional().isInt({ min: 1 }),
   body('items').isArray().withMessage('Items array required'),
   body('items.*.description').optional().trim(),
   body('items.*.item_type').optional().isIn(['consultation', 'medicine', 'other']),
@@ -18,4 +19,8 @@ const updatePaymentRules = [
   body('payment_status').optional().isIn(['pending', 'partial', 'paid']),
 ];
 
-module.exports = { createRules, updatePaymentRules };
+const updateDateRules = [
+  body('invoice_date').matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('invoice_date must be YYYY-MM-DD'),
+];
+
+module.exports = { createRules, updatePaymentRules, updateDateRules };

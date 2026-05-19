@@ -102,10 +102,10 @@ export default function AppointmentForm() {
   }, [patientSearch]);
 
   useEffect(() => {
-    if (isDoctorOrAdmin && user?.id) {
-      setForm((f) => ({ ...f, doctor_id: user.id }));
+    if (isDoctor && !isAdmin && user?.id) {
+      setForm((f) => (f.doctor_id ? f : { ...f, doctor_id: user.id }));
     }
-  }, [isDoctorOrAdmin, user?.id]);
+  }, [isDoctor, isAdmin, user?.id]);
 
   useEffect(() => {
     api.get('/users/doctors').then(({ data }) => {
@@ -137,7 +137,7 @@ export default function AppointmentForm() {
 
   // Default doctor to first when doctors load on New Appointment (reception / super admin)
   useEffect(() => {
-    if (isEdit || isDoctorOrAdmin || doctors.length === 0) return;
+    if (isEdit || (isDoctor && !isAdmin) || doctors.length === 0) return;
     const firstId = doctors[0].id;
     if (firstId == null) return;
     setForm((f) => {
@@ -145,7 +145,7 @@ export default function AppointmentForm() {
       if (current === '' || current === undefined || current === null) return { ...f, doctor_id: firstId };
       return f;
     });
-  }, [doctors, isEdit, isDoctorOrAdmin]);
+  }, [doctors, isEdit, isDoctor, isAdmin]);
 
   useEffect(() => {
     if (isEdit) {
@@ -325,7 +325,8 @@ export default function AppointmentForm() {
     setSaveSuccess(false);
     const newErrors = {};
     if (!form.patient_id) newErrors.patient_id = 'Select a patient';
-    if (!isDoctorOrAdmin && !form.doctor_id) newErrors.doctor_id = 'Select a doctor';
+    const showDoctorSelect = doctors.length > 1 || !isDoctor;
+    if (showDoctorSelect && !form.doctor_id) newErrors.doctor_id = 'Select a doctor';
     if (!form.appointment_date) newErrors.appointment_date = 'Select a date';
     if (!form.start_time) newErrors.start_time = 'Select a time slot or enter a custom time';
     setErrors(newErrors);

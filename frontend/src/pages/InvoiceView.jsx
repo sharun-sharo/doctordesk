@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Pencil } from 'lucide-react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import Spinner from '../components/ui/Spinner';
 import Modal from '../components/ui/Modal';
 import FormInput from '../components/ui/FormInput';
+import DatePicker from '../components/ui/DatePicker';
 import StatusBadge from '../components/ui/StatusBadge';
+import { toYYYYMMDD } from '../components/ui/calendar/calendarUtils';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -14,12 +17,36 @@ export default function InvoiceView() {
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [payModal, setPayModal] = useState(false);
+  const [dateModal, setDateModal] = useState(false);
   const [paidAmount, setPaidAmount] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
   const [saving, setSaving] = useState(false);
+  const [savingDate, setSavingDate] = useState(false);
 
   useEffect(() => {
     api.get(`/invoices/${id}`).then(({ data }) => setInvoice(data.data)).catch(() => toast.error('Not found')).finally(() => setLoading(false));
   }, [id]);
+
+  const openDateModal = () => {
+    setInvoiceDate(toYYYYMMDD(new Date(invoice.created_at)) || '');
+    setDateModal(true);
+  };
+
+  const updateDate = () => {
+    if (!invoiceDate) {
+      toast.error('Select a date');
+      return;
+    }
+    setSavingDate(true);
+    api.patch(`/invoices/${id}/date`, { invoice_date: invoiceDate })
+      .then(({ data }) => {
+        setInvoice((i) => ({ ...i, created_at: data.data.created_at }));
+        setDateModal(false);
+        toast.success('Date updated');
+      })
+      .catch(() => toast.error('Failed to update date'))
+      .finally(() => setSavingDate(false));
+  };
 
   const updatePayment = () => {
     const paid = parseFloat(paidAmount) || 0;
@@ -70,8 +97,25 @@ export default function InvoiceView() {
       <div className="card max-w-2xl">
         <dl className="grid grid-cols-2 gap-2 text-body mb-4">
           <dt className="text-caption text-slate-500">Patient</dt><dd>{invoice.patient_name}</dd>
+          {invoice.doctor_name && (
+            <>
+              <dt className="text-caption text-slate-500">Doctor</dt><dd>{invoice.doctor_name}</dd>
+            </>
+          )}
           <dt className="text-caption text-slate-500">Phone</dt><dd>{invoice.patient_phone || '-'}</dd>
-          <dt className="text-caption text-slate-500">Date</dt><dd>{new Date(invoice.created_at).toLocaleDateString()}</dd>
+          <dt className="text-caption text-slate-500">Date</dt>
+          <dd className="flex items-center gap-2">
+            <span>{new Date(invoice.created_at).toLocaleDateString()}</span>
+            <button
+              type="button"
+              onClick={openDateModal}
+              className="inline-flex items-center gap-1 text-sm text-teal-600 hover:text-teal-700"
+              aria-label="Edit invoice date"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </button>
+          </dd>
           <dt className="text-caption text-slate-500">Status</dt><dd><StatusBadge status={invoice.payment_status} /></dd>
         </dl>
         <table className="w-full text-body">
@@ -95,6 +139,13 @@ export default function InvoiceView() {
           <p>Paid: ₹{Number(invoice.paid_amount).toFixed(2)}</p>
         </div>
       </div>
+      <Modal open={dateModal} onClose={() => setDateModal(false)} title="Edit invoice date">
+        <DatePicker label="Invoice date" value={invoiceDate} onChange={setInvoiceDate} placeholder="Select date" />
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" onClick={() => setDateModal(false)} className="btn-secondary">Cancel</button>
+          <button type="button" onClick={updateDate} className="btn-primary" disabled={savingDate}>{savingDate ? 'Saving…' : 'Save'}</button>
+        </div>
+      </Modal>
       <Modal open={payModal} onClose={() => setPayModal(false)} title="Update payment">
         <FormInput label="Paid amount" type="number" min={0} step={0.01} value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder="0.00" />
         <div className="mt-6 flex justify-end gap-2">

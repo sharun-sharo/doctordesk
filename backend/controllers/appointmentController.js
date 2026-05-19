@@ -2,6 +2,7 @@ const { pool } = require('../config/database');
 const { logActivity } = require('../utils/activityLogger');
 const { ROLES } = require('../config/roles');
 const { sendSms } = require('../services/sms');
+const { resolveDoctorIdForBooking } = require('../utils/resolveDoctorId');
 
 async function list(req, res, next) {
   try {
@@ -11,9 +12,14 @@ async function list(req, res, next) {
     const conditions = ['a.deleted_at IS NULL', 'p.id IS NOT NULL'];
     const params = [];
 
-    if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
+    if (req.user.roleId === ROLES.DOCTOR) {
       conditions.push('a.doctor_id = ?');
       params.push(req.user.id);
+    } else if (req.user.roleId === ROLES.ADMIN) {
+      conditions.push(
+        `(a.doctor_id = ? OR a.doctor_id IN (SELECT id FROM users WHERE assigned_admin_id = ? AND deleted_at IS NULL))`
+      );
+      params.push(req.user.id, req.user.id);
     } else if ((req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) && doctor_id) {
       // Receptionist/Assistant doctor: filter by selected doctor (must be one of their assigned)
       conditions.push('a.doctor_id = ?');
@@ -138,23 +144,9 @@ async function create(req, res, next) {
   try {
     let { patient_id, doctor_id, appointment_date, start_time, end_time, status, notes } = req.body;
     status = status && ['scheduled', 'completed', 'cancelled', 'no_show'].includes(status) ? status : 'scheduled';
-    if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
-      if (doctor_id) {
-        const [allowed] = await pool.execute(
-          'SELECT 1 FROM receptionist_doctors WHERE receptionist_id = ? AND doctor_id = ?',
-          [req.user.id, doctor_id]
-        );
-        const [isAssistant] = await pool.execute(
-          'SELECT 1 FROM users WHERE id = ? AND role_id = ? AND deleted_at IS NULL',
-          [doctor_id, ROLES.ASSISTANT_DOCTOR]
-        );
-        const allowedByAdmin = req.user.assignedAdminId && Number(doctor_id) === Number(req.user.assignedAdminId);
-        if (!allowed.length && !isAssistant.length && !allowedByAdmin) doctor_id = null;
-      }
-      if (!doctor_id && req.user.assignedAdminId) doctor_id = req.user.assignedAdminId;
-    }
-    if (req.user.roleId === ROLES.ADMIN || req.user.roleId === ROLES.DOCTOR) {
-      doctor_id = req.user.id;
+    doctor_id = await resolveDoctorIdForBooking(req, doctor_id);
+    if (!doctor_id) {
+      return res.status(400).json({ success: false, message: 'Doctor is required' });
     }
     // Only check slot conflict for scheduled appointments (allow multiple completed e.g. walk-ins)
     if (status === 'scheduled') {
@@ -225,8 +217,20 @@ async function update(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Appointment not found' });
     }
-    if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) && existing[0].doctor_id !== req.user.id) {
+    if (req.user.roleId === ROLES.DOCTOR && Number(existing[0].doctor_id) !== Number(req.user.id)) {
       return res.status(403).json({ success: false, message: 'Not your appointment' });
+    }
+    if (req.user.roleId === ROLES.ADMIN) {
+      const docId = existing[0].doctor_id;
+      const allowed =
+        Number(docId) === Number(req.user.id) ||
+        (await pool.execute(
+          'SELECT 1 FROM users WHERE id = ? AND assigned_admin_id = ? AND deleted_at IS NULL LIMIT 1',
+          [docId, req.user.id]
+        ))[0].length > 0;
+      if (!allowed) {
+        return res.status(403).json({ success: false, message: 'Not your appointment' });
+      }
     }
     if ((req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) && req.user.assignedAdminId && existing[0].doctor_id !== req.user.assignedAdminId) {
       return res.status(403).json({ success: false, message: 'Not your appointment' });
@@ -281,8 +285,20 @@ async function remove(req, res, next) {
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Appointment not found' });
     }
-    if ((req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) && existing[0].doctor_id !== req.user.id) {
+    if (req.user.roleId === ROLES.DOCTOR && Number(existing[0].doctor_id) !== Number(req.user.id)) {
       return res.status(403).json({ success: false, message: 'Not your appointment' });
+    }
+    if (req.user.roleId === ROLES.ADMIN) {
+      const docId = existing[0].doctor_id;
+      const allowed =
+        Number(docId) === Number(req.user.id) ||
+        (await pool.execute(
+          'SELECT 1 FROM users WHERE id = ? AND assigned_admin_id = ? AND deleted_at IS NULL LIMIT 1',
+          [docId, req.user.id]
+        ))[0].length > 0;
+      if (!allowed) {
+        return res.status(403).json({ success: false, message: 'Not your appointment' });
+      }
     }
     if ((req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) && req.user.assignedAdminId && existing[0].doctor_id !== req.user.assignedAdminId) {
       return res.status(403).json({ success: false, message: 'Not your appointment' });

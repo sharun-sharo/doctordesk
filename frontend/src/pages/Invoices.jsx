@@ -151,6 +151,7 @@ export default function Invoices() {
   const columns = [
     { key: 'invoice_number', header: 'Invoice #', render: (v) => <span className="font-medium">{v}</span> },
     { key: 'patient_name', header: 'Patient' },
+    { key: 'doctor_name', header: 'Doctor', render: (v) => v || '—' },
     { key: 'total', header: 'Total', render: (v) => `₹${Number(v).toLocaleString()}` },
     {
       key: 'payment_status',

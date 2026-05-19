@@ -4,28 +4,47 @@ const { logActivity } = require('../utils/activityLogger');
 const PDFDocument = require('pdfkit');
 const { ROLES } = require('../config/roles');
 const { getClinicLogoPath, getClinicBusinessSettings } = require('./settingsController');
+const { resolveDoctorIdForBooking } = require('../utils/resolveDoctorId');
 let invoiceSchemaEnsured = false;
 
 async function ensureInvoiceSchema() {
   if (invoiceSchemaEnsured) return;
-  const [paidAmountCol] = await pool.execute(
-    `SELECT 1
+  const [cols] = await pool.execute(
+    `SELECT COLUMN_NAME
      FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = 'invoices'
-       AND COLUMN_NAME = 'paid_amount'
-     LIMIT 1`
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'invoices'
+       AND COLUMN_NAME IN ('paid_amount', 'doctor_id')`
   );
-  if (!paidAmountCol.length) {
+  const names = new Set((cols || []).map((c) => c.COLUMN_NAME));
+  if (!names.has('paid_amount')) {
     await pool.execute('ALTER TABLE invoices ADD COLUMN paid_amount DECIMAL(12,2) DEFAULT 0.00');
   }
+  if (!names.has('doctor_id')) {
+    await pool.execute(
+      'ALTER TABLE invoices ADD COLUMN doctor_id int unsigned DEFAULT NULL AFTER appointment_id'
+    );
+    await pool.execute(
+      'ALTER TABLE invoices ADD KEY idx_inv_doctor (doctor_id), ADD CONSTRAINT fk_invoice_doctor FOREIGN KEY (doctor_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE'
+    ).catch(() => {});
+  }
   invoiceSchemaEnsured = true;
+}
+
+async function adminCanAccessDoctor(adminId, doctorId) {
+  if (doctorId == null) return false;
+  if (Number(doctorId) === Number(adminId)) return true;
+  const [team] = await pool.execute(
+    'SELECT 1 FROM users WHERE id = ? AND assigned_admin_id = ? AND deleted_at IS NULL LIMIT 1',
+    [doctorId, adminId]
+  );
+  return team.length > 0;
 }
 
 /** Returns true if the user can access the given invoice (by id). assignedAdminId fallback when receptionist_doctors is empty. */
 async function canAccessInvoice(invoiceId, roleId, userId, assignedAdminId = null) {
   const [rows] = await pool.execute(
-    `SELECT i.id, i.appointment_id, i.created_by, a.doctor_id AS appointment_doctor_id
+    `SELECT i.id, i.appointment_id, i.created_by, i.doctor_id AS invoice_doctor_id,
+            a.doctor_id AS appointment_doctor_id
      FROM invoices i
      LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL
      WHERE i.id = ? AND i.deleted_at IS NULL`,
@@ -33,17 +52,23 @@ async function canAccessInvoice(invoiceId, roleId, userId, assignedAdminId = nul
   );
   if (!rows || !rows.length) return false;
   const r = rows[0];
+  const billingDoctorId = r.appointment_doctor_id ?? r.invoice_doctor_id;
   if (roleId === ROLES.SUPER_ADMIN) return true;
-  if (roleId === ROLES.DOCTOR || roleId === ROLES.ADMIN) {
-    return r.appointment_id == null || r.appointment_doctor_id === userId;
+  if (roleId === ROLES.DOCTOR) {
+    if (billingDoctorId == null) return r.created_by === userId;
+    return Number(billingDoctorId) === Number(userId);
+  }
+  if (roleId === ROLES.ADMIN) {
+    if (billingDoctorId == null) return r.created_by === userId;
+    return adminCanAccessDoctor(userId, billingDoctorId);
   }
   if (roleId === ROLES.RECEPTIONIST || roleId === ROLES.ASSISTANT_DOCTOR) {
-    if (r.appointment_id == null) return r.created_by === userId;
+    if (billingDoctorId == null) return r.created_by === userId;
     const [assigned] = await pool.execute(
       'SELECT 1 FROM receptionist_doctors WHERE receptionist_id = ? AND doctor_id = ? LIMIT 1',
-      [userId, r.appointment_doctor_id]
+      [userId, billingDoctorId]
     );
-    return (assigned && assigned.length) > 0 || (assignedAdminId != null && Number(r.appointment_doctor_id) === Number(assignedAdminId));
+    return (assigned && assigned.length) > 0 || (assignedAdminId != null && Number(billingDoctorId) === Number(assignedAdminId));
   }
   return false;
 }
@@ -64,25 +89,39 @@ async function list(req, res, next) {
       conditions.push('i.payment_status = ?');
       params.push(payment_status);
     }
-    let join = '';
-    if (req.user.roleId === ROLES.DOCTOR || req.user.roleId === ROLES.ADMIN) {
-      join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
-      conditions.push('(a.id IS NULL OR a.doctor_id = ?)');
-      params.push(req.user.id);
+    let join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
+    if (req.user.roleId === ROLES.DOCTOR) {
+      conditions.push('(COALESCE(a.doctor_id, i.doctor_id) = ? OR (i.appointment_id IS NULL AND i.doctor_id IS NULL AND i.created_by = ?))');
+      params.push(req.user.id, req.user.id);
+    } else if (req.user.roleId === ROLES.ADMIN) {
+      conditions.push(
+        `(COALESCE(a.doctor_id, i.doctor_id) = ? OR COALESCE(a.doctor_id, i.doctor_id) IN (SELECT id FROM users WHERE assigned_admin_id = ? AND deleted_at IS NULL) OR (i.appointment_id IS NULL AND i.doctor_id IS NULL AND i.created_by = ?))`
+      );
+      params.push(req.user.id, req.user.id, req.user.id);
     } else if (req.user.roleId === ROLES.RECEPTIONIST || req.user.roleId === ROLES.ASSISTANT_DOCTOR) {
-      join = ' LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL';
-      conditions.push('(i.appointment_id IS NULL AND i.created_by = ?) OR (a.id IS NOT NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)))');
-      params.push(req.user.id, req.user.id, req.user.assignedAdminId, req.user.assignedAdminId);
+      conditions.push(
+        `(i.appointment_id IS NULL AND (i.created_by = ? OR COALESCE(i.doctor_id, 0) IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (i.doctor_id = ? AND ? IS NOT NULL))) OR (a.id IS NOT NULL AND (a.doctor_id IN (SELECT doctor_id FROM receptionist_doctors WHERE receptionist_id = ?) OR (a.doctor_id = ? AND ? IS NOT NULL)))`
+      );
+      params.push(
+        req.user.id,
+        req.user.id,
+        req.user.assignedAdminId,
+        req.user.assignedAdminId,
+        req.user.id,
+        req.user.assignedAdminId,
+        req.user.assignedAdminId
+      );
     }
     const where = conditions.join(' AND ');
     const allParams = [...params];
 
     const [rows] = await pool.execute(
       `SELECT i.id, i.invoice_number, i.patient_id, i.total, i.payment_status, i.paid_amount, i.created_at,
-        p.name AS patient_name
+        p.name AS patient_name, doc.name AS doctor_name
        FROM invoices i
        JOIN patients p ON i.patient_id = p.id
        ${join}
+       LEFT JOIN users doc ON doc.id = COALESCE(i.doctor_id, a.doctor_id) AND doc.deleted_at IS NULL
        WHERE ${where}
        ORDER BY i.created_at DESC
        LIMIT ${perPage} OFFSET ${offset}`,
@@ -104,9 +143,14 @@ async function list(req, res, next) {
 
 async function getOne(req, res, next) {
   try {
+    await ensureInvoiceSchema();
     const [inv] = await pool.execute(
-      `SELECT i.*, p.name AS patient_name, p.phone AS patient_phone, p.address AS patient_address
-       FROM invoices i JOIN patients p ON i.patient_id = p.id
+      `SELECT i.*, p.name AS patient_name, p.phone AS patient_phone, p.address AS patient_address,
+              doc.name AS doctor_name
+       FROM invoices i
+       JOIN patients p ON i.patient_id = p.id
+       LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL
+       LEFT JOIN users doc ON doc.id = COALESCE(i.doctor_id, a.doctor_id) AND doc.deleted_at IS NULL
        WHERE i.id = ? AND i.deleted_at IS NULL`,
       [req.params.id]
     );
@@ -131,7 +175,15 @@ async function getOne(req, res, next) {
 async function create(req, res, next) {
   try {
     await ensureInvoiceSchema();
-    const { patient_id, appointment_id, items, tax_percent = 0, discount = 0 } = req.body;
+    const { patient_id, appointment_id, doctor_id: bodyDoctorId, items, tax_percent = 0, discount = 0 } = req.body;
+    let doctor_id = await resolveDoctorIdForBooking(req, bodyDoctorId);
+    if (appointment_id) {
+      const [appt] = await pool.execute(
+        'SELECT doctor_id FROM appointments WHERE id = ? AND deleted_at IS NULL',
+        [appointment_id]
+      );
+      if (appt.length && appt[0].doctor_id) doctor_id = appt[0].doctor_id;
+    }
     const invoiceNumber = await generateInvoiceNumber();
     let subtotal = 0;
     const itemRows = (items || []).map((it) => {
@@ -152,12 +204,13 @@ async function create(req, res, next) {
     const total = Math.max(0, subtotal + taxAmount - parseFloat(discount || 0));
 
     const [result] = await pool.execute(
-      `INSERT INTO invoices (invoice_number, patient_id, appointment_id, subtotal, tax_percent, tax_amount, discount, total, payment_status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      `INSERT INTO invoices (invoice_number, patient_id, appointment_id, doctor_id, subtotal, tax_percent, tax_amount, discount, total, payment_status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         invoiceNumber,
         patient_id,
         appointment_id || null,
+        doctor_id || null,
         subtotal,
         tax_percent,
         taxAmount,
@@ -175,8 +228,12 @@ async function create(req, res, next) {
       );
     }
     const [rows] = await pool.execute(
-      `SELECT i.id, i.invoice_number, i.patient_id, i.total, i.payment_status, i.created_at, p.name AS patient_name
-       FROM invoices i JOIN patients p ON i.patient_id = p.id WHERE i.id = ?`,
+      `SELECT i.id, i.invoice_number, i.patient_id, i.total, i.payment_status, i.created_at, p.name AS patient_name,
+              doc.name AS doctor_name
+       FROM invoices i
+       JOIN patients p ON i.patient_id = p.id
+       LEFT JOIN users doc ON doc.id = i.doctor_id AND doc.deleted_at IS NULL
+       WHERE i.id = ?`,
       [invoiceId]
     );
     await logActivity({
@@ -195,6 +252,38 @@ async function create(req, res, next) {
       );
     }
     res.status(201).json({ success: true, data: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function updateDate(req, res, next) {
+  try {
+    await ensureInvoiceSchema();
+    const id = req.params.id;
+    const { invoice_date } = req.body;
+    const allowed = await canAccessInvoice(Number(id), req.user.roleId, req.user.id, req.user.assignedAdminId);
+    if (!allowed) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+    const [existing] = await pool.execute(
+      'SELECT id, created_at FROM invoices WHERE id = ? AND deleted_at IS NULL',
+      [id]
+    );
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+    const prev = existing[0].created_at ? new Date(existing[0].created_at) : new Date();
+    const [y, m, d] = invoice_date.split('-').map(Number);
+    const updated = new Date(prev);
+    updated.setFullYear(y, m - 1, d);
+    await pool.execute('UPDATE invoices SET created_at = ? WHERE id = ?', [updated, id]);
+    const [rows] = await pool.execute(
+      'SELECT id, invoice_number, created_at FROM invoices WHERE id = ?',
+      [id]
+    );
+    await logActivity({ userId: req.user.id, action: 'update', entityType: 'invoice', entityId: id, req });
+    res.json({ success: true, data: rows[0] });
   } catch (err) {
     next(err);
   }
@@ -231,12 +320,40 @@ async function updatePayment(req, res, next) {
 }
 
 // A4: 595.28 x 841.89 pt. Margins 50; content width 495.
-const PDF_MARGIN = 50;
+const PDF_MARGIN = 48;
 const PDF_WIDTH = 595.28;
+const PDF_HEIGHT = 841.89;
 const PDF_CONTENT = PDF_WIDTH - PDF_MARGIN * 2;
 const CLINIC_NAME = process.env.CLINIC_NAME || 'DoctorDesk';
 // Use "Rs." instead of "₹" so PDF renders correctly in all viewers (Helvetica has no rupee glyph).
 const CURRENCY = 'Rs. ';
+
+/** Invoice PDF design tokens — optimized for print and on-screen viewing. */
+const PDF_THEME = {
+  primary: '#1a2b4a',
+  body: '#2d3748',
+  secondary: '#64748b',
+  muted: '#94a3b8',
+  accent: '#0d9488',
+  accentSoft: '#e6f7f5',
+  border: '#e2e8f0',
+  surface: '#f8fafc',
+  paid: '#047857',
+  pending: '#b45309',
+  white: '#ffffff',
+};
+
+const PDF_TYPE = {
+  title: 22,
+  subtitle: 11,
+  section: 8,
+  body: 10,
+  bodySm: 9,
+  tableHead: 9,
+  tableRow: 10,
+  total: 13,
+  footer: 8,
+};
 
 function formatTime(t) {
   if (!t) return '';
@@ -246,6 +363,34 @@ function formatTime(t) {
   const h12 = h % 12 || 12;
   const ampm = h < 12 ? 'AM' : 'PM';
   return m != null ? `${h12}:${String(m).padStart(2, '0')} ${ampm}` : `${h12} ${ampm}`;
+}
+
+function pdfFont(doc, size, color, bold = false) {
+  doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).fillColor(color);
+}
+
+function formatMoney(n) {
+  return `${CURRENCY}${Number(n || 0).toFixed(2)}`;
+}
+
+function formatInvoiceDate(d) {
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function patientAgeGender(data) {
+  const parts = [];
+  if (data.patient_dob) {
+    const today = new Date();
+    const birth = new Date(data.patient_dob);
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age -= 1;
+    parts.push(`${age} yrs`);
+  }
+  if (data.patient_gender) {
+    parts.push(String(data.patient_gender).charAt(0).toUpperCase() + String(data.patient_gender).slice(1));
+  }
+  return parts.join(' · ');
 }
 
 async function downloadPdf(req, res, next) {
@@ -258,7 +403,7 @@ async function downloadPdf(req, res, next) {
        FROM invoices i
        JOIN patients p ON i.patient_id = p.id
        LEFT JOIN appointments a ON i.appointment_id = a.id
-       LEFT JOIN users u ON a.doctor_id = u.id
+       LEFT JOIN users u ON u.id = COALESCE(i.doctor_id, a.doctor_id) AND u.deleted_at IS NULL
        LEFT JOIN users creator ON i.created_by = creator.id
        WHERE i.id = ? AND i.deleted_at IS NULL`,
       [req.params.id]
@@ -283,190 +428,219 @@ async function downloadPdf(req, res, next) {
     );
     doc.pipe(res);
 
-    let y = PDF_MARGIN;
     const left = PDF_MARGIN;
     const right = PDF_WIDTH - PDF_MARGIN;
-
-    // ----- Header: logo (if uploaded) or clinic name & tagline -----
-    const logoPath = await getClinicLogoPath(req.user?.id || null);
-    const logoWidth = 140;
-    const logoMaxHeight = 44;
-    if (logoPath) {
-      try {
-        doc.image(logoPath, left, y, { width: logoWidth, height: logoMaxHeight, fit: [logoWidth, logoMaxHeight] });
-        y += logoMaxHeight + 8;
-      } catch (_) {
-        doc.fontSize(18).fillColor('#0f766e').text(CLINIC_NAME, left, y);
-        y += 22;
-      }
-    } else {
-      doc.fontSize(18).fillColor('#0f766e').text(CLINIC_NAME, left, y);
-      y += 22;
-    }
-    doc.fontSize(9).fillColor('#64748b').text('Medical Invoice', left, y);
-    y += 14;
     const business = await getClinicBusinessSettings(req.user?.id || null);
-    const hasBusiness = business.address || business.phone || business.email || business.gstin;
-    if (hasBusiness) {
-      const lines = [];
-      if (business.address) lines.push(business.address);
-      const contact = [business.phone, business.email].filter(Boolean).join(' · ');
-      if (contact) lines.push(contact);
-      if (business.gstin) lines.push(`GSTIN: ${business.gstin}`);
-      doc.fontSize(8).fillColor('#64748b');
-      lines.forEach((line) => {
-        doc.text(line, left, y, { width: PDF_CONTENT * 0.6 });
-        y += 12;
-      });
-      y += 6;
-    }
-    doc.moveTo(left, y).lineTo(right, y).strokeColor('#e2e8f0').lineWidth(1).stroke();
-    y += 16;
-
-    // ----- Invoice # and Date (right) -----
-    doc.fontSize(10).fillColor('#1e293b');
-    doc.text(`Invoice #: ${data.invoice_number}`, left, y, { width: PDF_CONTENT, align: 'right' });
-    y += 14;
-    doc.text(`Date: ${new Date(data.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`, left, y, { width: PDF_CONTENT, align: 'right' });
-    y += 24;
-
-    // ----- Two columns: Doctor Details | Patient Details -----
-    const col1End = left + PDF_CONTENT / 2 - 10;
-    const col2Start = left + PDF_CONTENT / 2 + 10;
-    doc.fontSize(9).fillColor('#64748b').text('Doctor Details', left, y);
-    doc.text('Patient Details', col2Start, y);
-    y += 16;
-    
+    const logoPath = await getClinicLogoPath(req.user?.id || null);
     const doctorName = data.doctor_name || data.creator_name || '—';
     const doctorPhone = data.doctor_phone || data.creator_phone || '';
-    
-    let leftY = y;
-    let rightY = y;
-    
-    doc.fontSize(10).fillColor('#1e293b');
-    doc.text(doctorName, left, leftY);
-    doc.text(data.patient_name || '—', col2Start, rightY);
-    leftY += 14;
-    rightY += 14;
-    
-    doc.fontSize(9).fillColor('#475569');
-    doc.text(doctorPhone ? `Phone: ${doctorPhone}` : '—', left, leftY);
-    leftY += 14;
-    
-    if (data.patient_phone) {
-      doc.text(`Phone: ${data.patient_phone}`, col2Start, rightY);
-      rightY += 14;
-    } else {
-      doc.text('Phone: —', col2Start, rightY);
-      rightY += 14;
-    }
-    
-    let ageGenderStr = [];
-    if (data.patient_dob) {
-      const today = new Date();
-      const birth = new Date(data.patient_dob);
-      let age = today.getFullYear() - birth.getFullYear();
-      const m = today.getMonth() - birth.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-      ageGenderStr.push(`${age} Yrs`);
-    }
-    if (data.patient_gender) {
-      ageGenderStr.push(data.patient_gender.charAt(0).toUpperCase() + data.patient_gender.slice(1));
-    }
-    if (ageGenderStr.length > 0) {
-      doc.text(ageGenderStr.join(' · '), col2Start, rightY);
-      rightY += 14;
-    }
-
-    if (data.patient_address) {
-      doc.text(`Address: ${data.patient_address}`, col2Start, rightY, { width: PDF_CONTENT / 2 - 20 });
-      const addressHeight = doc.heightOfString(`Address: ${data.patient_address}`, { width: PDF_CONTENT / 2 - 20 });
-      rightY += addressHeight;
-    }
-    
-    y = Math.max(leftY, rightY) + 12;
-
-    // ----- Appointment information -----
-    if (data.appointment_date || data.start_time) {
-      doc.fontSize(9).fillColor('#64748b').text('Appointment', left, y);
-      y += 14;
-      doc.fontSize(10).fillColor('#1e293b');
-      const apptDate = data.appointment_date ? new Date(data.appointment_date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '';
-      const apptTime = formatTime(data.start_time);
-      doc.text([apptDate, apptTime].filter(Boolean).join(' · '), left, y);
-      y += 20;
-    } else {
-      y += 8;
-    }
-
-    // ----- Billing table -----
-    const tableTop = y;
-    const colW = [260, 50, 85, 100]; // Description, Qty, Unit Price, Amount
-    const tableLeft = left;
-    const rowHeight = 20;
-    const headerH = 24;
-
-    doc.fontSize(9).fillColor('#64748b');
-    doc.rect(tableLeft, tableTop, PDF_CONTENT, headerH).fillAndStroke('#f1f5f9', '#e2e8f0');
-    doc.fillColor('#1e293b').text('Description', tableLeft + 8, tableTop + 6, { width: colW[0] - 16 });
-    doc.text('Qty', tableLeft + colW[0], tableTop + 6, { width: colW[1], align: 'right' });
-    doc.text('Unit Price', tableLeft + colW[0] + colW[1], tableTop + 6, { width: colW[2], align: 'right' });
-    doc.text('Amount', tableLeft + colW[0] + colW[1] + colW[2], tableTop + 6, { width: colW[3], align: 'right' });
-    y = tableTop + headerH;
-
-    doc.fillColor('#1e293b').fontSize(10);
-    (items || []).forEach((it) => {
-      doc.rect(tableLeft, y, PDF_CONTENT, rowHeight).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
-      doc.fillColor('#1e293b').text(String(it.description || '').slice(0, 50), tableLeft + 8, y + 5, { width: colW[0] - 16 });
-      doc.text(String(it.quantity), tableLeft + colW[0], y + 5, { width: colW[1], align: 'right' });
-      doc.text(`${CURRENCY}${Number(it.unit_price).toFixed(2)}`, tableLeft + colW[0] + colW[1], y + 5, { width: colW[2], align: 'right' });
-      doc.text(`${CURRENCY}${Number(it.total).toFixed(2)}`, tableLeft + colW[0] + colW[1] + colW[2], y + 5, { width: colW[3], align: 'right' });
-      y += rowHeight;
-    });
-    doc.rect(tableLeft, y, PDF_CONTENT, rowHeight).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
-    y += rowHeight + 20;
-
-    // ----- Totals (right-aligned) -----
-    const totLeft = right - 180;
-    const totLabelW = 100;
-    const totValW = 80;
-    doc.fontSize(10).fillColor('#475569');
-    doc.text('Subtotal', totLeft, y, { width: totLabelW });
-    doc.text(`${CURRENCY}${Number(data.subtotal).toFixed(2)}`, totLeft + totLabelW, y, { width: totValW, align: 'right' });
-    y += 16;
-    doc.text('Tax', totLeft, y, { width: totLabelW });
-    doc.text(`${CURRENCY}${Number(data.tax_amount).toFixed(2)}`, totLeft + totLabelW, y, { width: totValW, align: 'right' });
-    y += 16;
-    doc.text('Discount', totLeft, y, { width: totLabelW });
-    doc.text(`-${CURRENCY}${Number(data.discount).toFixed(2)}`, totLeft + totLabelW, y, { width: totValW, align: 'right' });
-    y += 20;
-    doc.fontSize(12).fillColor('#0f766e').font('Helvetica-Bold');
-    doc.text('Total', totLeft, y, { width: totLabelW });
-    doc.text(`${CURRENCY}${Number(data.total).toFixed(2)}`, totLeft + totLabelW, y, { width: totValW, align: 'right' });
-    doc.font('Helvetica');
-    y += 28;
-
-    // ----- Payment details -----
-    doc.fontSize(9).fillColor('#64748b').text('Payment Details', left, y);
-    y += 14;
-    doc.fontSize(10).fillColor('#1e293b');
-    doc.text(`Status: ${String(data.payment_status).charAt(0).toUpperCase() + String(data.payment_status).slice(1)}`, left, y);
-    y += 14;
-    doc.text(`Paid: ${CURRENCY}${Number(data.paid_amount || 0).toFixed(2)}`, left, y);
     const balance = Math.max(0, Number(data.total) - Number(data.paid_amount || 0));
-    doc.text(`Balance: ${CURRENCY}${balance.toFixed(2)}`, left, y + 14);
-    y += 40;
+    const payStatus = String(data.payment_status || 'pending').toLowerCase();
+    const isPaid = payStatus === 'paid';
 
-    // ----- Footer with terms -----
-    const footerY = 841.89 - PDF_MARGIN - 44;
-    doc.moveTo(left, footerY).lineTo(right, footerY).strokeColor('#e2e8f0').lineWidth(0.5).stroke();
-    doc.fontSize(8).fillColor('#94a3b8').text(
-      'Thank you for choosing our clinic. For queries contact the clinic',
+    // Accent top bar
+    doc.rect(0, 0, PDF_WIDTH, 4).fill(PDF_THEME.accent);
+
+    let y = PDF_MARGIN;
+
+    // ----- Header: clinic identity (left) + invoice meta (right) -----
+    const metaBoxW = 200;
+    const metaBoxX = right - metaBoxW;
+    const headerStartY = y;
+
+    const logoW = 132;
+    const logoH = 40;
+    if (logoPath) {
+      try {
+        doc.image(logoPath, left, y, { width: logoW, height: logoH, fit: [logoW, logoH] });
+        y += logoH + 10;
+      } catch (_) {
+        pdfFont(doc, PDF_TYPE.title, PDF_THEME.primary, true);
+        doc.text(CLINIC_NAME, left, y, { width: PDF_CONTENT - metaBoxW - 16 });
+        y += 26;
+      }
+    } else {
+      pdfFont(doc, PDF_TYPE.title, PDF_THEME.primary, true);
+      doc.text(CLINIC_NAME, left, y, { width: PDF_CONTENT - metaBoxW - 16 });
+      y += 26;
+    }
+
+    pdfFont(doc, PDF_TYPE.subtitle, PDF_THEME.secondary);
+    doc.text('Medical & clinical services', left, y);
+    y += 14;
+
+    const bizLines = [];
+    if (business.address) bizLines.push(business.address);
+    const contact = [business.phone, business.email].filter(Boolean).join('  ·  ');
+    if (contact) bizLines.push(contact);
+    if (business.gstin) bizLines.push(`GSTIN ${business.gstin}`);
+    if (bizLines.length) {
+      pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
+      bizLines.forEach((line) => {
+        doc.text(line, left, y, { width: PDF_CONTENT - metaBoxW - 20, lineGap: 2 });
+        y += doc.heightOfString(line, { width: PDF_CONTENT - metaBoxW - 20 }) + 4;
+      });
+    }
+
+    const metaH = 72;
+    doc.roundedRect(metaBoxX, headerStartY, metaBoxW, metaH, 4).fill(PDF_THEME.surface);
+    doc.rect(metaBoxX, headerStartY, metaBoxW, 3).fill(PDF_THEME.accent);
+    pdfFont(doc, PDF_TYPE.section, PDF_THEME.accent, true);
+    doc.text('INVOICE', metaBoxX + 14, headerStartY + 12);
+    pdfFont(doc, PDF_TYPE.body, PDF_THEME.primary, true);
+    doc.text(data.invoice_number, metaBoxX + 14, headerStartY + 26, { width: metaBoxW - 28 });
+    pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
+    doc.text(`Date  ${formatInvoiceDate(data.created_at)}`, metaBoxX + 14, headerStartY + 44);
+    if (data.appointment_date || data.start_time) {
+      const apptDate = data.appointment_date
+        ? new Date(data.appointment_date).toLocaleDateString('en-IN', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+          })
+        : '';
+      const apptLine = [apptDate, formatTime(data.start_time)].filter(Boolean).join(' · ');
+      doc.text(`Visit  ${apptLine}`, metaBoxX + 14, headerStartY + 58, { width: metaBoxW - 28 });
+    }
+
+    y = Math.max(y, headerStartY + metaH) + 20;
+    doc.moveTo(left, y).lineTo(right, y).strokeColor(PDF_THEME.border).lineWidth(0.75).stroke();
+    y += 18;
+
+    // ----- Doctor & patient panels -----
+    const panelGap = 14;
+    const panelW = (PDF_CONTENT - panelGap) / 2;
+    const panelPad = 12;
+    const col2X = left + panelW + panelGap;
+
+    const drawPartyPanel = (x, title, name, lines) => {
+      const contentH =
+        28 +
+        lines.reduce((h, line) => {
+          pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
+          return h + doc.heightOfString(line, { width: panelW - panelPad * 2 }) + 5;
+        }, 0);
+      const panelH = Math.max(64, contentH);
+      doc.roundedRect(x, y, panelW, panelH, 4).fillAndStroke(PDF_THEME.surface, PDF_THEME.border);
+      pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
+      doc.text(title, x + panelPad, y + panelPad);
+      pdfFont(doc, PDF_TYPE.body + 1, PDF_THEME.primary, true);
+      doc.text(name, x + panelPad, y + panelPad + 14, { width: panelW - panelPad * 2 });
+      let ly = y + panelPad + 30;
+      pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
+      lines.forEach((line) => {
+        doc.text(line, x + panelPad, ly, { width: panelW - panelPad * 2 });
+        ly += doc.heightOfString(line, { width: panelW - panelPad * 2 }) + 5;
+      });
+      return panelH;
+    };
+
+    const patientLines = [
+      data.patient_phone ? `Phone  ${data.patient_phone}` : 'Phone  —',
+    ];
+    const ag = patientAgeGender(data);
+    if (ag) patientLines.push(ag);
+    if (data.patient_address) patientLines.push(`Address  ${data.patient_address}`);
+
+    const doctorLines = [doctorPhone ? `Phone  ${doctorPhone}` : 'Phone  —'];
+    const panelH = Math.max(
+      drawPartyPanel(left, 'TREATING DOCTOR', doctorName, doctorLines),
+      drawPartyPanel(col2X, 'BILLED TO', data.patient_name || '—', patientLines)
+    );
+    y += panelH + 22;
+
+    // ----- Line items table -----
+    const colW = [238, 42, 98, 117];
+    const tableLeft = left;
+    const rowH = 22;
+    const headH = 26;
+    const tableTop = y;
+
+    doc.rect(tableLeft, tableTop, PDF_CONTENT, headH).fill(PDF_THEME.primary);
+    pdfFont(doc, PDF_TYPE.tableHead, PDF_THEME.white, true);
+    const headY = tableTop + 8;
+    doc.text('Description', tableLeft + 10, headY, { width: colW[0] - 12 });
+    doc.text('Qty', tableLeft + colW[0], headY, { width: colW[1], align: 'right' });
+    doc.text('Unit price', tableLeft + colW[0] + colW[1], headY, { width: colW[2], align: 'right' });
+    doc.text('Amount', tableLeft + colW[0] + colW[1] + colW[2], headY, { width: colW[3] - 8, align: 'right' });
+    y = tableTop + headH;
+
+    (items || []).forEach((it, idx) => {
+      if (idx % 2 === 1) {
+        doc.rect(tableLeft, y, PDF_CONTENT, rowH).fill(PDF_THEME.surface);
+      }
+      doc.moveTo(tableLeft, y + rowH).lineTo(tableLeft + PDF_CONTENT, y + rowH).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();
+      pdfFont(doc, PDF_TYPE.tableRow, PDF_THEME.body);
+      doc.text(String(it.description || '—').slice(0, 55), tableLeft + 10, y + 6, { width: colW[0] - 14 });
+      pdfFont(doc, PDF_TYPE.tableRow, PDF_THEME.secondary);
+      doc.text(String(it.quantity), tableLeft + colW[0], y + 6, { width: colW[1], align: 'right' });
+      doc.text(formatMoney(it.unit_price), tableLeft + colW[0] + colW[1], y + 6, { width: colW[2], align: 'right' });
+      pdfFont(doc, PDF_TYPE.tableRow, PDF_THEME.primary, true);
+      doc.text(formatMoney(it.total), tableLeft + colW[0] + colW[1] + colW[2], y + 6, {
+        width: colW[3] - 8,
+        align: 'right',
+      });
+      y += rowH;
+    });
+    doc.rect(tableLeft, tableTop, PDF_CONTENT, y - tableTop).strokeColor(PDF_THEME.border).lineWidth(0.75).stroke();
+    y += 18;
+
+    // ----- Totals + payment (two columns) -----
+    const totalsW = 220;
+    const totalsX = right - totalsW;
+    const payBoxW = PDF_CONTENT - totalsW - 20;
+
+    const drawTotalRow = (label, value, bold = false, accent = false) => {
+      pdfFont(doc, bold ? PDF_TYPE.total : PDF_TYPE.body, accent ? PDF_THEME.accent : PDF_THEME.secondary, bold);
+      doc.text(label, totalsX, y, { width: 90 });
+      pdfFont(doc, bold ? PDF_TYPE.total : PDF_TYPE.body, bold ? PDF_THEME.primary : PDF_THEME.body, bold);
+      doc.text(value, totalsX + 90, y, { width: totalsW - 90, align: 'right' });
+      y += bold ? 22 : 16;
+    };
+
+    doc.roundedRect(totalsX - 10, y - 6, totalsW + 10, 108, 4).fillAndStroke(PDF_THEME.surface, PDF_THEME.border);
+    const totalsStart = y + 4;
+    y = totalsStart;
+    drawTotalRow('Subtotal', formatMoney(data.subtotal));
+    drawTotalRow(`Tax (${Number(data.tax_percent || 0)}%)`, formatMoney(data.tax_amount));
+    drawTotalRow('Discount', `− ${formatMoney(data.discount)}`);
+    doc.moveTo(totalsX, y).lineTo(totalsX + totalsW - 10, y).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();
+    y += 10;
+    drawTotalRow('Amount due', formatMoney(data.total), true, true);
+
+    const payY = totalsStart;
+    pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
+    doc.text('PAYMENT', left, payY);
+    const badgeW = 58;
+    const badgeH = 18;
+    const badgeColor = isPaid ? PDF_THEME.paid : PDF_THEME.pending;
+    const badgeBg = isPaid ? '#ecfdf5' : '#fffbeb';
+    doc.roundedRect(left, payY + 14, badgeW, badgeH, 3).fill(badgeBg);
+    pdfFont(doc, PDF_TYPE.bodySm, badgeColor, true);
+    doc.text(
+      payStatus.charAt(0).toUpperCase() + payStatus.slice(1),
+      left,
+      payY + 18,
+      { width: badgeW, align: 'center' }
+    );
+    pdfFont(doc, PDF_TYPE.body, PDF_THEME.body);
+    doc.text(`Paid  ${formatMoney(data.paid_amount)}`, left, payY + 40);
+    pdfFont(doc, PDF_TYPE.body, balance > 0 ? PDF_THEME.pending : PDF_THEME.secondary, balance > 0);
+    doc.text(`Balance  ${formatMoney(balance)}`, left, payY + 56);
+
+    y = Math.max(y, payY + 78) + 16;
+
+    // ----- Footer -----
+    const footerY = PDF_HEIGHT - PDF_MARGIN - 36;
+    doc.moveTo(left, footerY).lineTo(right, footerY).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();
+    pdfFont(doc, PDF_TYPE.footer, PDF_THEME.muted);
+    doc.text(
+      'Thank you for choosing our clinic. Please retain this invoice for your records.',
       left,
       footerY + 10,
       { width: PDF_CONTENT, align: 'center' }
     );
-    doc.text(`Generated by ${CLINIC_NAME}`, left, footerY + 24, { width: PDF_CONTENT, align: 'center' });
+    doc.text(`Issued via ${CLINIC_NAME}`, left, footerY + 22, { width: PDF_CONTENT, align: 'center' });
 
     doc.end();
   } catch (err) {
@@ -496,4 +670,4 @@ async function destroy(req, res, next) {
   }
 }
 
-module.exports = { list, getOne, create, updatePayment, downloadPdf, destroy };
+module.exports = { list, getOne, create, updateDate, updatePayment, downloadPdf, destroy };

@@ -56,8 +56,8 @@ export default function PrescriptionForm() {
 
   useEffect(() => {
     api.get('/patients', { params: { limit: 20 } }).then(({ data }) => setPatientSearchResults(data.data.patients || []));
-    if (!isDoctorOrAdmin) api.get('/users/doctors').then(({ data }) => setDoctors(data.data || []));
-  }, [isDoctorOrAdmin]);
+    api.get('/users/doctors').then(({ data }) => setDoctors(data.data || [])).catch(() => setDoctors([]));
+  }, []);
 
   // Fetch patient by ID for pre-selected patients (from URL params or edit mode)
   useEffect(() => {
@@ -207,7 +207,7 @@ export default function PrescriptionForm() {
           fd.append('medicines', JSON.stringify(form.medicines));
         } else {
           fd.append('patient_id', String(form.patient_id));
-          if (!isDoctorOrAdmin) fd.append('doctor_id', String(form.doctor_id));
+          if (form.doctor_id) fd.append('doctor_id', String(form.doctor_id));
           if (form.appointment_id) fd.append('appointment_id', String(form.appointment_id));
           fd.append('diagnosis', form.diagnosis ?? '');
           fd.append('notes', form.notes ?? '');
@@ -229,7 +229,7 @@ export default function PrescriptionForm() {
         }
       } else {
         const payload = { ...form, patient_id: parseInt(form.patient_id, 10), medicines: medicinesPayload };
-        if (!isEdit && !isDoctorOrAdmin) payload.doctor_id = parseInt(form.doctor_id, 10);
+        if (!isEdit && form.doctor_id) payload.doctor_id = parseInt(form.doctor_id, 10);
         if (isEdit) {
           await api.put(`/prescriptions/${id}`, { diagnosis: form.diagnosis, notes: form.notes, medicines: form.medicines });
           toast.success('Updated');
@@ -337,7 +337,7 @@ export default function PrescriptionForm() {
             </div>
           )}
         </div>
-        {!isDoctorOrAdmin && !isEdit && (
+        {!isEdit && doctors.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Doctor *</label>
             <select value={form.doctor_id} onChange={(e) => setForm((f) => ({ ...f, doctor_id: e.target.value }))} className="input-field" required>

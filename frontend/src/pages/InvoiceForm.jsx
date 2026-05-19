@@ -105,6 +105,10 @@ export default function InvoiceForm() {
       toast.error('Select patient');
       return;
     }
+    if (!form.doctor_id) {
+      toast.error('Select doctor');
+      return;
+    }
     const payload = {
       patient_id: parseInt(form.patient_id, 10),
       doctor_id: form.doctor_id ? parseInt(form.doctor_id, 10) : undefined,

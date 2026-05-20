@@ -5,6 +5,7 @@ const PDFDocument = require('pdfkit');
 const { ROLES } = require('../config/roles');
 const { getClinicLogoPath, getClinicBusinessSettings } = require('./settingsController');
 const { resolveDoctorIdForBooking } = require('../utils/resolveDoctorId');
+const { amountInWords } = require('../utils/amountInWords');
 let invoiceSchemaEnsured = false;
 
 async function ensureInvoiceSchema() {
@@ -638,29 +639,48 @@ async function downloadPdf(req, res, next) {
     y += 18;
 
     // ----- Totals + payment (two columns) -----
-    const totalsW = 220;
-    const totalsX = right - totalsW;
-    const payBoxW = PDF_CONTENT - totalsW - 20;
+    const totalsBoxW = 232;
+    const totalsBoxX = right - totalsBoxW;
+    const totalsPad = 14;
+    const totalsInnerW = totalsBoxW - totalsPad * 2;
+    const totalsLabelW = 98;
+    const totalsValueW = totalsInnerW - totalsLabelW;
+    const totalsValueX = totalsBoxX + totalsPad + totalsLabelW;
+
+    const totalsBoxTop = y;
+    const totalsBoxH = 106;
+    doc.roundedRect(totalsBoxX, totalsBoxTop, totalsBoxW, totalsBoxH, 4).fillAndStroke(PDF_THEME.surface, PDF_THEME.border);
+    y = totalsBoxTop + 12;
 
     const drawTotalRow = (label, value, bold = false, accent = false) => {
       pdfFont(doc, bold ? PDF_TYPE.total : PDF_TYPE.body, accent ? PDF_THEME.accent : PDF_THEME.secondary, bold);
-      doc.text(label, totalsX, y, { width: 90 });
+      doc.text(label, totalsBoxX + totalsPad, y, { width: totalsLabelW });
       pdfFont(doc, bold ? PDF_TYPE.total : PDF_TYPE.body, bold ? PDF_THEME.primary : PDF_THEME.body, bold);
-      doc.text(value, totalsX + 90, y, { width: totalsW - 90, align: 'right' });
+      doc.text(value, totalsValueX, y, { width: totalsValueW, align: 'right' });
       y += bold ? 22 : 16;
     };
 
-    doc.roundedRect(totalsX - 10, y - 6, totalsW + 10, 108, 4).fillAndStroke(PDF_THEME.surface, PDF_THEME.border);
-    const totalsStart = y + 4;
-    y = totalsStart;
     drawTotalRow('Subtotal', formatMoney(data.subtotal));
     drawTotalRow(`Tax (${Number(data.tax_percent || 0)}%)`, formatMoney(data.tax_amount));
-    drawTotalRow('Discount', `− ${formatMoney(data.discount)}`);
-    doc.moveTo(totalsX, y).lineTo(totalsX + totalsW - 10, y).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();
+    drawTotalRow('Discount', `- ${formatMoney(data.discount)}`);
+    const dividerY = y;
+    doc
+      .moveTo(totalsBoxX + totalsPad, dividerY)
+      .lineTo(totalsBoxX + totalsBoxW - totalsPad, dividerY)
+      .strokeColor(PDF_THEME.border)
+      .lineWidth(0.5)
+      .stroke();
     y += 10;
     drawTotalRow('Amount due', formatMoney(data.total), true, true);
 
-    const payY = totalsStart;
+    const wordsY = totalsBoxTop + totalsBoxH + 10;
+    const amountWords = amountInWords(data.total);
+    pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary, true);
+    doc.text('Amount in words', left, wordsY, { width: PDF_CONTENT });
+    pdfFont(doc, PDF_TYPE.body, PDF_THEME.body);
+    doc.text(amountWords, left, wordsY + 12, { width: PDF_CONTENT, lineGap: 3 });
+
+    const payY = totalsBoxTop + 12;
     pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
     doc.text('PAYMENT', left, payY);
     const badgeW = 58;
@@ -680,7 +700,7 @@ async function downloadPdf(req, res, next) {
     pdfFont(doc, PDF_TYPE.body, balance > 0 ? PDF_THEME.pending : PDF_THEME.secondary, balance > 0);
     doc.text(`Balance  ${formatMoney(balance)}`, left, payY + 56);
 
-    y = Math.max(y, payY + 78) + 16;
+    y = Math.max(y, payY + 78, wordsY + pdfTextBlockHeight(doc, amountWords, PDF_CONTENT, PDF_TYPE.body) + 22) + 16;
 
     // ----- Footer -----
     const footerY = PDF_HEIGHT - PDF_MARGIN - 36;

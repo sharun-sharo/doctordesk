@@ -465,10 +465,6 @@ async function downloadPdf(req, res, next) {
       y += 26;
     }
 
-    pdfFont(doc, PDF_TYPE.subtitle, PDF_THEME.secondary);
-    doc.text('Medical & clinical services', left, y);
-    y += 14;
-
     const bizLines = [];
     if (business.address) bizLines.push(business.address);
     const contact = [business.phone, business.email].filter(Boolean).join('  ·  ');

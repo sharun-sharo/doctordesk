@@ -552,21 +552,22 @@ async function downloadPdf(req, res, next) {
     // ----- Doctor & patient panels -----
     const panelGap = 14;
     const panelW = (PDF_CONTENT - panelGap) / 2;
-    const panelPad = 12;
+    const panelPad = 10;
     const col2X = left + panelW + panelGap;
 
-    const partyTextW = panelW - panelPad * 2;
-    const partyLineGap = 7;
+    const partyTextW = panelW - panelPad * 2 - 4;
+    const partyLineGap = 5;
 
     const measurePartyPanel = (title, name, lines) => {
       let inner = panelPad;
       pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
-      inner += pdfTextBlockHeight(doc, title, partyTextW, PDF_TYPE.section) + 5;
-      pdfFont(doc, PDF_TYPE.body + 1, PDF_THEME.primary, true);
-      inner += pdfTextBlockHeight(doc, name || '—', partyTextW, PDF_TYPE.body + 1) + 8;
+      inner += pdfTextBlockHeight(doc, title, partyTextW, PDF_TYPE.section) + 4;
+      pdfFont(doc, PDF_TYPE.body, PDF_THEME.primary, true);
+      inner += pdfTextBlockHeight(doc, name || '—', partyTextW, PDF_TYPE.body) + 6;
       pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
-      lines.forEach((line) => {
-        inner += pdfTextBlockHeight(doc, line, partyTextW, PDF_TYPE.bodySm) + partyLineGap;
+      lines.forEach((line, i) => {
+        inner += pdfTextBlockHeight(doc, line, partyTextW, PDF_TYPE.bodySm);
+        if (i < lines.length - 1) inner += partyLineGap;
       });
       return inner + panelPad;
     };
@@ -576,14 +577,15 @@ async function downloadPdf(req, res, next) {
       let cy = y + panelPad;
       pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
       doc.text(title, x + panelPad, cy, { width: partyTextW });
-      cy += pdfTextBlockHeight(doc, title, partyTextW, PDF_TYPE.section) + 5;
-      pdfFont(doc, PDF_TYPE.body + 1, PDF_THEME.primary, true);
-      doc.text(name || '—', x + panelPad, cy, { width: partyTextW });
-      cy += pdfTextBlockHeight(doc, name || '—', partyTextW, PDF_TYPE.body + 1) + 8;
+      cy += pdfTextBlockHeight(doc, title, partyTextW, PDF_TYPE.section) + 4;
+      pdfFont(doc, PDF_TYPE.body, PDF_THEME.primary, true);
+      doc.text(name || '—', x + panelPad + 2, cy, { width: partyTextW });
+      cy += pdfTextBlockHeight(doc, name || '—', partyTextW, PDF_TYPE.body) + 6;
       pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
-      lines.forEach((line) => {
-        doc.text(line, x + panelPad, cy, { width: partyTextW });
-        cy += pdfTextBlockHeight(doc, line, partyTextW, PDF_TYPE.bodySm) + partyLineGap;
+      lines.forEach((line, i) => {
+        doc.text(line, x + panelPad + 2, cy, { width: partyTextW });
+        cy += pdfTextBlockHeight(doc, line, partyTextW, PDF_TYPE.bodySm);
+        if (i < lines.length - 1) cy += partyLineGap;
       });
     };
 
@@ -595,30 +597,24 @@ async function downloadPdf(req, res, next) {
     if (data.patient_address) patientLines.push(`Address  ${data.patient_address}`);
 
     const doctorLines = [doctorPhone ? `Phone  ${doctorPhone}` : 'Phone  —'];
-    const panelH = Math.max(
-      measurePartyPanel('Consulting Doctor', doctorName, doctorLines),
-      measurePartyPanel('BILLED TO', data.patient_name || '—', patientLines),
-      72
-    );
-    drawPartyPanel(left, 'Consulting Doctor', doctorName, doctorLines, panelH);
-    drawPartyPanel(col2X, 'BILLED TO', data.patient_name || '—', patientLines, panelH);
-    y += panelH + 22;
+    const doctorPanelH = measurePartyPanel('Consulting Doctor', doctorName, doctorLines);
+    const patientPanelH = measurePartyPanel('BILLED TO', data.patient_name || '—', patientLines);
+    drawPartyPanel(left, 'Consulting Doctor', doctorName, doctorLines, doctorPanelH);
+    drawPartyPanel(col2X, 'BILLED TO', data.patient_name || '—', patientLines, patientPanelH);
+    y += Math.max(doctorPanelH, patientPanelH) + 14;
 
-    // ----- Line items table -----
+    // ----- Line items table (numeric columns anchored from right edge) -----
     const tableLeft = left;
-    const tablePad = 12;
-    const cellGap = 6;
-    const colDesc = 208;
-    const colQty = 44;
-    const colUnit = 86;
-    const colAmt = PDF_CONTENT - tablePad * 2 - colDesc - colQty - colUnit;
+    const tablePad = 14;
+    const tableRight = tableLeft + PDF_CONTENT - tablePad;
+    const wMoney = 88;
+    const wUnit = 78;
+    const wQty = 36;
+    const xMoney = tableRight - wMoney;
+    const xUnit = xMoney - wUnit - 8;
+    const xQty = xUnit - wQty - 8;
     const xDesc = tableLeft + tablePad;
-    const xQty = xDesc + colDesc;
-    const xUnit = xQty + colQty;
-    const xAmt = xUnit + colUnit;
-    const wAmt = colAmt - cellGap;
-    const wUnit = colUnit - cellGap;
-    const wQty = colQty - cellGap;
+    const wDesc = xQty - xDesc - 8;
     const rowH = 22;
     const headH = 26;
     const tableTop = y;
@@ -626,10 +622,10 @@ async function downloadPdf(req, res, next) {
     doc.rect(tableLeft, tableTop, PDF_CONTENT, headH).fill(PDF_THEME.primary);
     pdfFont(doc, PDF_TYPE.tableHead, PDF_THEME.white, true);
     const headY = tableTop + 8;
-    doc.text('Description', xDesc, headY, { width: colDesc - cellGap });
+    doc.text('Description', xDesc, headY, { width: wDesc });
     doc.text('Qty', xQty, headY, { width: wQty, align: 'right' });
     doc.text('Unit price', xUnit, headY, { width: wUnit, align: 'right' });
-    doc.text('Amount', xAmt, headY, { width: wAmt, align: 'right' });
+    doc.text('Amount', xMoney, headY, { width: wMoney, align: 'right' });
     y = tableTop + headH;
 
     (items || []).forEach((it, idx) => {
@@ -638,12 +634,12 @@ async function downloadPdf(req, res, next) {
       }
       doc.moveTo(tableLeft, y + rowH).lineTo(tableLeft + PDF_CONTENT, y + rowH).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();
       pdfFont(doc, PDF_TYPE.tableRow, PDF_THEME.body);
-      doc.text(String(it.description || '—').slice(0, 55), xDesc, y + 6, { width: colDesc - cellGap });
+      doc.text(String(it.description || '—').slice(0, 55), xDesc, y + 6, { width: wDesc });
       pdfFont(doc, PDF_TYPE.tableRow, PDF_THEME.secondary);
       doc.text(String(it.quantity), xQty, y + 6, { width: wQty, align: 'right' });
       doc.text(formatMoney(it.unit_price), xUnit, y + 6, { width: wUnit, align: 'right' });
       pdfFont(doc, PDF_TYPE.tableRow, PDF_THEME.primary, true);
-      doc.text(formatMoney(it.total), xAmt, y + 6, { width: wAmt, align: 'right' });
+      doc.text(formatMoney(it.total), xMoney, y + 6, { width: wMoney, align: 'right' });
       y += rowH;
     });
     doc.rect(tableLeft, tableTop, PDF_CONTENT, y - tableTop).strokeColor(PDF_THEME.border).lineWidth(0.75).stroke();
@@ -653,11 +649,10 @@ async function downloadPdf(req, res, next) {
     const totalsBoxW = 248;
     const totalsBoxX = right - totalsBoxW;
     const totalsPad = 16;
-    const totalsColGap = 10;
-    const totalsInnerW = totalsBoxW - totalsPad * 2;
-    const totalsLabelW = 94;
-    const totalsValueW = totalsInnerW - totalsLabelW - totalsColGap;
-    const totalsValueX = totalsBoxX + totalsPad + totalsLabelW + totalsColGap;
+    const totalsRight = totalsBoxX + totalsBoxW - totalsPad;
+    const totalsValueW = 100;
+    const totalsValueX = totalsRight - totalsValueW;
+    const totalsLabelW = totalsValueX - totalsBoxX - totalsPad - 8;
 
     const totalsBoxTop = y;
     const totalsBoxH = 112;
@@ -667,9 +662,9 @@ async function downloadPdf(req, res, next) {
     const drawTotalRow = (label, value, bold = false, accent = false) => {
       pdfFont(doc, PDF_TYPE.body, accent ? PDF_THEME.accent : PDF_THEME.secondary, accent);
       doc.text(label, totalsBoxX + totalsPad, y, { width: totalsLabelW });
-      pdfFont(doc, bold ? PDF_TYPE.total : PDF_TYPE.body, PDF_THEME.primary, bold);
-      doc.text(value, totalsValueX, y, { width: totalsValueW - 4, align: 'right' });
-      y += bold ? 24 : 17;
+      pdfFont(doc, PDF_TYPE.body, PDF_THEME.primary, bold);
+      doc.text(value, totalsValueX, y, { width: totalsValueW, align: 'right' });
+      y += bold ? 22 : 17;
     };
 
     drawTotalRow('Subtotal', formatMoney(data.subtotal));
@@ -684,13 +679,6 @@ async function downloadPdf(req, res, next) {
       .stroke();
     y += 10;
     drawTotalRow('Amount due', formatMoney(data.total), true, true);
-
-    const wordsY = totalsBoxTop + totalsBoxH + 10;
-    const amountWords = amountInWords(data.total);
-    pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary, true);
-    doc.text('Amount in words', left, wordsY, { width: PDF_CONTENT });
-    pdfFont(doc, PDF_TYPE.body, PDF_THEME.body);
-    doc.text(amountWords, left, wordsY + 12, { width: PDF_CONTENT, lineGap: 3 });
 
     const payY = totalsBoxTop + 12;
     pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
@@ -712,7 +700,22 @@ async function downloadPdf(req, res, next) {
     pdfFont(doc, PDF_TYPE.body, balance > 0 ? PDF_THEME.pending : PDF_THEME.secondary, balance > 0);
     doc.text(`Balance  ${formatMoney(balance)}`, left, payY + 56);
 
-    y = Math.max(y, payY + 78, wordsY + pdfTextBlockHeight(doc, amountWords, PDF_CONTENT, PDF_TYPE.body) + 22) + 16;
+    const amountWords = amountInWords(data.total);
+    const wordsBoxTop = Math.max(totalsBoxTop + totalsBoxH, payY + 72) + 14;
+    const wordsPad = 12;
+    const wordsInnerW = PDF_CONTENT - wordsPad * 2;
+    const wordsH = pdfTextBlockHeight(doc, amountWords, wordsInnerW, PDF_TYPE.body) + 28;
+    doc.roundedRect(left, wordsBoxTop, PDF_CONTENT, wordsH, 4).fillAndStroke(PDF_THEME.surface, PDF_THEME.border);
+    pdfFont(doc, PDF_TYPE.section, PDF_THEME.accent, true);
+    doc.text('AMOUNT IN WORDS', left + wordsPad, wordsBoxTop + wordsPad, { width: wordsInnerW, align: 'center' });
+    pdfFont(doc, PDF_TYPE.body, PDF_THEME.primary, true);
+    doc.text(amountWords, left + wordsPad, wordsBoxTop + wordsPad + 14, {
+      width: wordsInnerW,
+      align: 'center',
+      lineGap: 4,
+    });
+
+    y = wordsBoxTop + wordsH + 16;
 
     // ----- Footer -----
     const footerY = PDF_HEIGHT - PDF_MARGIN - 36;

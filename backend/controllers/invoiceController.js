@@ -451,26 +451,28 @@ async function downloadPdf(req, res, next) {
 
     let y = PDF_MARGIN;
 
-    // ----- Header: clinic identity (left) + invoice meta (right) -----
+    // ----- Header: invoice meta (top right), centered logo, clinic details -----
     const metaBoxW = 200;
     const metaBoxX = right - metaBoxW;
     const headerStartY = y;
 
-    const logoW = 132;
-    const logoH = 40;
+    const logoW = 240;
+    const logoH = 68;
+    const logoX = left + (PDF_CONTENT - logoW) / 2;
+    const logoY = headerStartY + 6;
     if (logoPath) {
       try {
-        doc.image(logoPath, left, y, { width: logoW, height: logoH, fit: [logoW, logoH] });
-        y += logoH + 10;
+        doc.image(logoPath, logoX, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
+        y = logoY + logoH + 14;
       } catch (_) {
-        pdfFont(doc, PDF_TYPE.title, PDF_THEME.primary, true);
-        doc.text(CLINIC_NAME, left, y, { width: PDF_CONTENT - metaBoxW - 16 });
-        y += 26;
+        pdfFont(doc, PDF_TYPE.title + 2, PDF_THEME.primary, true);
+        doc.text(CLINIC_NAME, left, logoY, { width: PDF_CONTENT, align: 'center' });
+        y = logoY + 32;
       }
     } else {
-      pdfFont(doc, PDF_TYPE.title, PDF_THEME.primary, true);
-      doc.text(CLINIC_NAME, left, y, { width: PDF_CONTENT - metaBoxW - 16 });
-      y += 26;
+      pdfFont(doc, PDF_TYPE.title + 2, PDF_THEME.primary, true);
+      doc.text(CLINIC_NAME, left, logoY, { width: PDF_CONTENT, align: 'center' });
+      y = logoY + 32;
     }
 
     const contactPhone = business.phone || '';
@@ -479,7 +481,7 @@ async function downloadPdf(req, res, next) {
     if (hasClinicContact) {
       const boxPad = 12;
       const boxInner = 6;
-      const textW = PDF_CONTENT - metaBoxW - 28;
+      const textW = PDF_CONTENT - 28;
       const boxX = left;
       let innerH = 14;
 
@@ -497,27 +499,27 @@ async function downloadPdf(req, res, next) {
       }
 
       const boxH = innerH + boxPad * 2;
-      doc.roundedRect(boxX, y, textW + 24, boxH, 5).fillAndStroke(PDF_THEME.accentSoft, PDF_THEME.border);
+      doc.roundedRect(boxX, y, PDF_CONTENT, boxH, 5).fillAndStroke(PDF_THEME.accentSoft, PDF_THEME.border);
       doc.rect(boxX, y, 4, boxH).fill(PDF_THEME.accent);
 
       pdfFont(doc, PDF_TYPE.section, PDF_THEME.accent, true);
-      doc.text('CLINIC DETAILS', boxX + boxInner + boxPad, y + boxPad);
+      doc.text('CLINIC DETAILS', boxX, y + boxPad, { width: PDF_CONTENT, align: 'center' });
 
       let cy = y + boxPad + 14;
       if (business.address) {
         pdfFont(doc, PDF_TYPE.contact, PDF_THEME.body);
-        doc.text(business.address, boxX + boxInner + boxPad, cy, { width: textW, lineGap: 3 });
-        cy += doc.heightOfString(business.address, { width: textW, lineGap: 3 }) + 8;
+        doc.text(business.address, boxX + boxPad, cy, { width: PDF_CONTENT - boxPad * 2, lineGap: 3, align: 'center' });
+        cy += doc.heightOfString(business.address, { width: PDF_CONTENT - boxPad * 2, lineGap: 3 }) + 8;
       }
       if (contactPhone || contactEmail) {
         const contactLine = [contactPhone, contactEmail].filter(Boolean).join('   ·   ');
         pdfFont(doc, PDF_TYPE.contact, PDF_THEME.primary, true);
-        doc.text(contactLine, boxX + boxInner + boxPad, cy, { width: textW });
-        cy += doc.heightOfString(contactLine, { width: textW }) + 8;
+        doc.text(contactLine, boxX + boxPad, cy, { width: PDF_CONTENT - boxPad * 2, align: 'center' });
+        cy += doc.heightOfString(contactLine, { width: PDF_CONTENT - boxPad * 2 }) + 8;
       }
       if (business.gstin) {
         pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
-        doc.text(`GSTIN  ${business.gstin}`, boxX + boxInner + boxPad, cy, { width: textW });
+        doc.text(`GSTIN  ${business.gstin}`, boxX + boxPad, cy, { width: PDF_CONTENT - boxPad * 2, align: 'center' });
       }
       y += boxH + 12;
     }

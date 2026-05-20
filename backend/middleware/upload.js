@@ -24,10 +24,12 @@ const storage = multer.diskStorage({
 
 const clinicLogoStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, CLINIC_LOGO_DIR),
-  filename: (_req, file, cb) => {
+  filename: (req, file, cb) => {
     const ext = (path.extname(file.originalname) || '.png').toLowerCase();
     const safe = ['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext) ? ext : '.png';
-    cb(null, `logo${safe}`);
+    const uid = req.user?.id;
+    const name = uid != null ? `logo-user-${uid}${safe}` : `logo${safe}`;
+    cb(null, name);
   },
 });
 

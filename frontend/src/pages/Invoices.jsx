@@ -4,6 +4,7 @@ import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { Plus, Download, Trash2, Upload, Image } from 'lucide-react';
 import DataTable from '../components/ui/DataTable';
+import { logoImageSrc } from '../utils/logoImageSrc';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 const API_ORIGIN = API_BASE.startsWith('http') ? API_BASE.replace(/\/api\/v1\/?$/, '') : '';
@@ -117,10 +118,11 @@ export default function Invoices() {
     api
       .post('/settings/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       .then(({ data }) => {
-        setSettings((s) => ({ ...s, logoUrl: data.data?.logoUrl ?? data.logoUrl ?? s.logoUrl }));
-        setLogoBuster(Date.now());
+        const bust = Date.now();
+        const newUrl = data.data?.logoUrl ?? data.logoUrl ?? null;
+        setSettings((s) => ({ ...s, logoUrl: newUrl }));
+        setLogoBuster(bust);
         toast.success('Logo updated. It will appear on new invoice PDFs.');
-        fetchSettings();
       })
       .catch(() => toast.error('Failed to upload logo'))
       .finally(() => {
@@ -129,7 +131,7 @@ export default function Invoices() {
       });
   };
 
-  const logoSrc = settings.logoUrl ? `${API_ORIGIN || window.location.origin}${settings.logoUrl}?t=${logoBuster}` : null;
+  const logoSrc = logoImageSrc(settings.logoUrl, API_ORIGIN || window.location.origin, logoBuster);
 
   const handleSaveBusiness = () => {
     setBusinessSaving(true);

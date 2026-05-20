@@ -71,7 +71,15 @@ app.get('/health', (req, res) =>
   })
 );
 
-// Static uploads (e.g. clinic logo at /api/v1/uploads/clinic/logo.png)
+// Clinic logos: avoid stale browser cache after re-upload
+app.use(
+  `${API_PREFIX}/uploads/clinic`,
+  express.static(path.join(process.cwd(), 'uploads', 'clinic'), {
+    setHeaders(res) {
+      res.setHeader('Cache-Control', 'no-store, must-revalidate');
+    },
+  })
+);
 app.use(`${API_PREFIX}/uploads`, express.static(path.join(process.cwd(), 'uploads')));
 
 // API routes

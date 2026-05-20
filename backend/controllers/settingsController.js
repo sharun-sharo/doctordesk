@@ -17,21 +17,51 @@ function getExtFromMime(mime) {
   return map[String(mime || '').toLowerCase()] || '.png';
 }
 
+function getCanonicalLogoFilename(userId, ext) {
+  const safeExt = ['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(String(ext || '').toLowerCase())
+    ? String(ext).toLowerCase()
+    : '.png';
+  return userId != null ? `logo-user-${userId}${safeExt}` : `logo${safeExt}`;
+}
+
+function removeStaleLogoFiles(userId, keepFilename) {
+  if (!fs.existsSync(CLINIC_LOGO_DIR)) return;
+  const keep = String(keepFilename || '').toLowerCase();
+  const prefixes =
+    userId != null
+      ? [`logo-user-${userId}.`.toLowerCase(), 'logo.']
+      : ['logo.'];
+  for (const file of fs.readdirSync(CLINIC_LOGO_DIR)) {
+    const lower = file.toLowerCase();
+    if (lower === keep) continue;
+    if (prefixes.some((p) => lower.startsWith(p))) {
+      try {
+        fs.unlinkSync(path.join(CLINIC_LOGO_DIR, file));
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  }
+}
+
 function getClinicLogoFilenameFromDisk(prefix = 'logo.') {
   if (!fs.existsSync(CLINIC_LOGO_DIR)) return null;
   const files = fs.readdirSync(CLINIC_LOGO_DIR);
   const normalizedPrefix = String(prefix || 'logo.').toLowerCase();
-  const logo = files.find((f) => f.toLowerCase().startsWith(normalizedPrefix));
-  return logo || null;
+  const matches = files.filter((f) => f.toLowerCase().startsWith(normalizedPrefix));
+  if (!matches.length) return null;
+  if (matches.length === 1) return matches[0];
+  return matches.sort((a, b) => {
+    const aPath = path.join(CLINIC_LOGO_DIR, a);
+    const bPath = path.join(CLINIC_LOGO_DIR, b);
+    return fs.statSync(bPath).mtimeMs - fs.statSync(aPath).mtimeMs;
+  })[0];
 }
 
-async function ensureClinicLogoFileFromDb(userId = null) {
-  if (!fs.existsSync(CLINIC_LOGO_DIR)) {
-    fs.mkdirSync(CLINIC_LOGO_DIR, { recursive: true });
-  }
+async function fetchLogoRow(userId = null) {
   const [rows] = userId
     ? await pool.execute(
-      `SELECT logo_data, logo_mime, logo_filename
+      `SELECT logo_data, logo_mime, logo_filename, updated_at
        FROM clinic_settings
        WHERE user_id = ?
        ORDER BY updated_at DESC, id DESC
@@ -39,30 +69,38 @@ async function ensureClinicLogoFileFromDb(userId = null) {
       [userId]
     )
     : await pool.execute(
-      `SELECT logo_data, logo_mime, logo_filename
+      `SELECT logo_data, logo_mime, logo_filename, updated_at
        FROM clinic_settings
        WHERE user_id IS NULL
        ORDER BY updated_at DESC, id DESC
        LIMIT 1`
     );
-  const row = rows[0];
-  if (!row || !row.logo_data) return null;
-  const ext = path.extname(row.logo_filename || '') || getExtFromMime(row.logo_mime);
-  const safeExt = ['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext.toLowerCase()) ? ext.toLowerCase() : '.png';
-  const filename = userId != null ? `logo-user-${userId}${safeExt}` : `logo${safeExt}`;
-  const fullPath = path.join(CLINIC_LOGO_DIR, filename);
-  if (!fs.existsSync(fullPath)) {
-    fs.writeFileSync(fullPath, row.logo_data);
+  return rows[0] || null;
+}
+
+/** Always write the latest logo blob from DB to disk (overwrites stale cache files). */
+async function syncLogoFileFromDb(userId = null) {
+  const row = await fetchLogoRow(userId);
+  if (!row?.logo_data) return null;
+
+  if (!fs.existsSync(CLINIC_LOGO_DIR)) {
+    fs.mkdirSync(CLINIC_LOGO_DIR, { recursive: true });
   }
+
+  const ext = path.extname(row.logo_filename || '') || getExtFromMime(row.logo_mime);
+  const filename = getCanonicalLogoFilename(userId, ext);
+  const fullPath = path.join(CLINIC_LOGO_DIR, filename);
+  fs.writeFileSync(fullPath, row.logo_data);
+  removeStaleLogoFiles(userId, filename);
   return filename;
 }
 
 async function getClinicLogoFilename(userId = null) {
-  const onDisk = userId != null
+  const fromDb = await syncLogoFileFromDb(userId);
+  if (fromDb) return fromDb;
+  return userId != null
     ? getClinicLogoFilenameFromDisk(`logo-user-${userId}.`)
-    : getClinicLogoFilenameFromDisk();
-  if (onDisk) return onDisk;
-  return ensureClinicLogoFileFromDb(userId);
+    : getClinicLogoFilenameFromDisk('logo.');
 }
 
 async function getClinicLogoPath(userId = null) {
@@ -141,7 +179,9 @@ async function getSettings(req, res, next) {
   try {
     await ensureClinicSettingsTable();
     const resolvedFilename = await getClinicLogoFilename(req.user?.id || null);
-    const logoUrl = resolvedFilename ? `${API_PREFIX}/uploads/clinic/${resolvedFilename}` : null;
+    const logoUrl = resolvedFilename
+      ? `${API_PREFIX}/uploads/clinic/${resolvedFilename}?v=${Date.now()}`
+      : null;
     const business = await getClinicBusinessSettings(req.user?.id || null);
     res.json({
       success: true,
@@ -165,22 +205,29 @@ async function uploadLogo(req, res, next) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
     await ensureClinicSettingsTable();
+    const userId = req.user.id;
     const fileBuffer = fs.readFileSync(req.file.path);
+    const filename = req.file.filename || getCanonicalLogoFilename(userId, path.extname(req.file.originalname));
+
     const [updateResult] = await pool.execute(
       `UPDATE clinic_settings
-       SET logo_data = ?, logo_mime = ?, logo_filename = ?
+       SET logo_data = ?, logo_mime = ?, logo_filename = ?, updated_at = NOW()
        WHERE user_id = ?`,
-      [fileBuffer, req.file.mimetype || null, req.file.filename || null, req.user.id]
+      [fileBuffer, req.file.mimetype || null, filename, userId]
     );
     if (!updateResult.affectedRows) {
       await pool.execute(
         `INSERT INTO clinic_settings (user_id, logo_data, logo_mime, logo_filename)
          VALUES (?, ?, ?, ?)`,
-        [req.user.id, fileBuffer, req.file.mimetype || null, req.file.filename || null]
+        [userId, fileBuffer, req.file.mimetype || null, filename]
       );
     }
-    const filename = await getClinicLogoFilename(req.user.id);
-    const logoUrl = filename ? `${API_PREFIX}/uploads/clinic/${filename}` : null;
+
+    removeStaleLogoFiles(userId, filename);
+    const synced = await syncLogoFileFromDb(userId);
+    const logoUrl = synced
+      ? `${API_PREFIX}/uploads/clinic/${synced}?v=${Date.now()}`
+      : null;
     res.json({ success: true, data: { logoUrl }, message: 'Logo updated' });
   } catch (err) {
     next(err);

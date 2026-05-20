@@ -9,6 +9,7 @@ import FormInput from '../components/ui/FormInput';
 import DatePicker from '../components/ui/DatePicker';
 import InvoiceDocument from '../components/invoice/InvoiceDocument';
 import { toYYYYMMDD } from '../components/ui/calendar/calendarUtils';
+import { logoImageSrc } from '../utils/logoImageSrc';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 const API_ORIGIN = API_BASE.startsWith('http') ? API_BASE.replace(/\/api\/v1\/?$/, '') : '';
@@ -24,8 +25,6 @@ export default function InvoiceView() {
   const [invoiceDate, setInvoiceDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [savingDate, setSavingDate] = useState(false);
-  const [logoBuster] = useState(() => Date.now());
-
   useEffect(() => {
     Promise.all([
       api.get(`/invoices/${id}`),
@@ -34,11 +33,10 @@ export default function InvoiceView() {
       .then(([invRes, settingsRes]) => {
         setInvoice(invRes.data.data);
         const d = settingsRes.data?.data || {};
+        const bust = Date.now();
         setClinic({
           name: import.meta.env.VITE_CLINIC_NAME || 'DoctorDesk',
-          logoUrl: d.logoUrl ?? null,
-          logoOrigin: API_ORIGIN,
-          logoBuster,
+          logoUrl: logoImageSrc(d.logoUrl, API_ORIGIN, bust),
           address: d.invoiceAddress || '',
           phone: d.invoicePhone || '',
           email: d.invoiceEmail || '',
@@ -47,7 +45,7 @@ export default function InvoiceView() {
       })
       .catch(() => toast.error('Not found'))
       .finally(() => setLoading(false));
-  }, [id, logoBuster]);
+  }, [id]);
 
   const openDateModal = () => {
     setInvoiceDate(toYYYYMMDD(new Date(invoice.created_at)) || '');

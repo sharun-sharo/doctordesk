@@ -60,9 +60,7 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
     return m != null ? `${h12}:${String(m).padStart(2, '0')} ${ampm}` : `${h12} ${ampm}`;
   })();
 
-  const logoSrc = clinic.logoUrl
-    ? `${clinic.logoOrigin || ''}${clinic.logoUrl}${clinic.logoBuster ? `?t=${clinic.logoBuster}` : ''}`
-    : null;
+  const logoSrc = clinic.logoUrl || null;
 
   return (
     <article

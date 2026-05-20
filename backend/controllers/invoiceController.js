@@ -546,26 +546,33 @@ async function downloadPdf(req, res, next) {
     const panelPad = 12;
     const col2X = left + panelW + panelGap;
 
-    const drawPartyPanel = (x, title, name, lines) => {
-      const contentH =
-        28 +
-        lines.reduce((h, line) => {
-          pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
-          return h + doc.heightOfString(line, { width: panelW - panelPad * 2 }) + 5;
-        }, 0);
-      const panelH = Math.max(64, contentH);
-      doc.roundedRect(x, y, panelW, panelH, 4).fillAndStroke(PDF_THEME.surface, PDF_THEME.border);
-      pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
-      doc.text(title, x + panelPad, y + panelPad);
+    const measurePartyPanel = (name, lines) => {
+      const textW = panelW - panelPad * 2;
       pdfFont(doc, PDF_TYPE.body + 1, PDF_THEME.primary, true);
-      doc.text(name, x + panelPad, y + panelPad + 14, { width: panelW - panelPad * 2 });
-      let ly = y + panelPad + 30;
+      const nameH = doc.heightOfString(name || '—', { width: textW });
+      pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
+      const linesH = lines.reduce(
+        (h, line) => h + doc.heightOfString(line, { width: textW }) + 6,
+        0
+      );
+      return panelPad + 12 + nameH + 8 + linesH + panelPad;
+    };
+
+    const drawPartyPanel = (x, title, name, lines, panelH) => {
+      const textW = panelW - panelPad * 2;
+      doc.roundedRect(x, y, panelW, panelH, 4).fillAndStroke(PDF_THEME.surface, PDF_THEME.border);
+      let cy = y + panelPad;
+      pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
+      doc.text(title, x + panelPad, cy, { width: textW });
+      cy += 12;
+      pdfFont(doc, PDF_TYPE.body + 1, PDF_THEME.primary, true);
+      doc.text(name || '—', x + panelPad, cy, { width: textW });
+      cy += doc.heightOfString(name || '—', { width: textW }) + 8;
       pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
       lines.forEach((line) => {
-        doc.text(line, x + panelPad, ly, { width: panelW - panelPad * 2 });
-        ly += doc.heightOfString(line, { width: panelW - panelPad * 2 }) + 5;
+        doc.text(line, x + panelPad, cy, { width: textW });
+        cy += doc.heightOfString(line, { width: textW }) + 6;
       });
-      return panelH;
     };
 
     const patientLines = [
@@ -577,9 +584,12 @@ async function downloadPdf(req, res, next) {
 
     const doctorLines = [doctorPhone ? `Phone  ${doctorPhone}` : 'Phone  —'];
     const panelH = Math.max(
-      drawPartyPanel(left, 'TREATING DOCTOR', doctorName, doctorLines),
-      drawPartyPanel(col2X, 'BILLED TO', data.patient_name || '—', patientLines)
+      measurePartyPanel(doctorName, doctorLines),
+      measurePartyPanel(data.patient_name || '—', patientLines),
+      64
     );
+    drawPartyPanel(left, 'Consulting Doctor', doctorName, doctorLines, panelH);
+    drawPartyPanel(col2X, 'BILLED TO', data.patient_name || '—', patientLines, panelH);
     y += panelH + 22;
 
     // ----- Line items table -----

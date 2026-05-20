@@ -370,6 +370,12 @@ function pdfFont(doc, size, color, bold = false) {
   doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).fillColor(color);
 }
 
+/** PDFKit heightOfString can underestimate; use line box + small buffer for layout. */
+function pdfTextBlockHeight(doc, text, width, fontSize) {
+  const measured = doc.heightOfString(String(text || ''), { width });
+  return Math.max(measured, fontSize * 1.4) + 4;
+}
+
 function formatMoney(n) {
   return `${CURRENCY}${Number(n || 0).toFixed(2)}`;
 }
@@ -546,32 +552,35 @@ async function downloadPdf(req, res, next) {
     const panelPad = 12;
     const col2X = left + panelW + panelGap;
 
-    const measurePartyPanel = (name, lines) => {
-      const textW = panelW - panelPad * 2;
+    const partyTextW = panelW - panelPad * 2;
+    const partyLineGap = 7;
+
+    const measurePartyPanel = (title, name, lines) => {
+      let inner = panelPad;
+      pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
+      inner += pdfTextBlockHeight(doc, title, partyTextW, PDF_TYPE.section) + 5;
       pdfFont(doc, PDF_TYPE.body + 1, PDF_THEME.primary, true);
-      const nameH = doc.heightOfString(name || '—', { width: textW });
+      inner += pdfTextBlockHeight(doc, name || '—', partyTextW, PDF_TYPE.body + 1) + 8;
       pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
-      const linesH = lines.reduce(
-        (h, line) => h + doc.heightOfString(line, { width: textW }) + 6,
-        0
-      );
-      return panelPad + 12 + nameH + 8 + linesH + panelPad;
+      lines.forEach((line) => {
+        inner += pdfTextBlockHeight(doc, line, partyTextW, PDF_TYPE.bodySm) + partyLineGap;
+      });
+      return inner + panelPad;
     };
 
     const drawPartyPanel = (x, title, name, lines, panelH) => {
-      const textW = panelW - panelPad * 2;
       doc.roundedRect(x, y, panelW, panelH, 4).fillAndStroke(PDF_THEME.surface, PDF_THEME.border);
       let cy = y + panelPad;
       pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
-      doc.text(title, x + panelPad, cy, { width: textW });
-      cy += 12;
+      doc.text(title, x + panelPad, cy, { width: partyTextW });
+      cy += pdfTextBlockHeight(doc, title, partyTextW, PDF_TYPE.section) + 5;
       pdfFont(doc, PDF_TYPE.body + 1, PDF_THEME.primary, true);
-      doc.text(name || '—', x + panelPad, cy, { width: textW });
-      cy += doc.heightOfString(name || '—', { width: textW }) + 8;
+      doc.text(name || '—', x + panelPad, cy, { width: partyTextW });
+      cy += pdfTextBlockHeight(doc, name || '—', partyTextW, PDF_TYPE.body + 1) + 8;
       pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
       lines.forEach((line) => {
-        doc.text(line, x + panelPad, cy, { width: textW });
-        cy += doc.heightOfString(line, { width: textW }) + 6;
+        doc.text(line, x + panelPad, cy, { width: partyTextW });
+        cy += pdfTextBlockHeight(doc, line, partyTextW, PDF_TYPE.bodySm) + partyLineGap;
       });
     };
 
@@ -584,9 +593,9 @@ async function downloadPdf(req, res, next) {
 
     const doctorLines = [doctorPhone ? `Phone  ${doctorPhone}` : 'Phone  —'];
     const panelH = Math.max(
-      measurePartyPanel(doctorName, doctorLines),
-      measurePartyPanel(data.patient_name || '—', patientLines),
-      64
+      measurePartyPanel('Consulting Doctor', doctorName, doctorLines),
+      measurePartyPanel('BILLED TO', data.patient_name || '—', patientLines),
+      72
     );
     drawPartyPanel(left, 'Consulting Doctor', doctorName, doctorLines, panelH);
     drawPartyPanel(col2X, 'BILLED TO', data.patient_name || '—', patientLines, panelH);

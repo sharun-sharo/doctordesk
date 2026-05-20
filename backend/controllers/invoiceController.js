@@ -349,6 +349,7 @@ const PDF_TYPE = {
   section: 8,
   body: 10,
   bodySm: 9,
+  contact: 10,
   tableHead: 9,
   tableRow: 10,
   total: 13,
@@ -465,17 +466,53 @@ async function downloadPdf(req, res, next) {
       y += 26;
     }
 
-    const bizLines = [];
-    if (business.address) bizLines.push(business.address);
-    const contact = [business.phone, business.email].filter(Boolean).join('  ·  ');
-    if (contact) bizLines.push(contact);
-    if (business.gstin) bizLines.push(`GSTIN ${business.gstin}`);
-    if (bizLines.length) {
-      pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
-      bizLines.forEach((line) => {
-        doc.text(line, left, y, { width: PDF_CONTENT - metaBoxW - 20, lineGap: 2 });
-        y += doc.heightOfString(line, { width: PDF_CONTENT - metaBoxW - 20 }) + 4;
-      });
+    const contactPhone = business.phone || '';
+    const contactEmail = business.email || '';
+    const hasClinicContact = business.address || contactPhone || contactEmail || business.gstin;
+    if (hasClinicContact) {
+      const boxPad = 12;
+      const boxInner = 6;
+      const textW = PDF_CONTENT - metaBoxW - 28;
+      const boxX = left;
+      let innerH = 14;
+
+      pdfFont(doc, PDF_TYPE.contact, PDF_THEME.body);
+      if (business.address) {
+        innerH += doc.heightOfString(business.address, { width: textW, lineGap: 3 }) + 8;
+      }
+      if (contactPhone || contactEmail) {
+        const contactLine = [contactPhone, contactEmail].filter(Boolean).join('   ·   ');
+        pdfFont(doc, PDF_TYPE.contact, PDF_THEME.primary, true);
+        innerH += doc.heightOfString(contactLine, { width: textW }) + 8;
+      }
+      if (business.gstin) {
+        innerH += PDF_TYPE.bodySm + 6;
+      }
+
+      const boxH = innerH + boxPad * 2;
+      doc.roundedRect(boxX, y, textW + 24, boxH, 5).fillAndStroke(PDF_THEME.accentSoft, PDF_THEME.border);
+      doc.rect(boxX, y, 4, boxH).fill(PDF_THEME.accent);
+
+      pdfFont(doc, PDF_TYPE.section, PDF_THEME.accent, true);
+      doc.text('CLINIC DETAILS', boxX + boxInner + boxPad, y + boxPad);
+
+      let cy = y + boxPad + 14;
+      if (business.address) {
+        pdfFont(doc, PDF_TYPE.contact, PDF_THEME.body);
+        doc.text(business.address, boxX + boxInner + boxPad, cy, { width: textW, lineGap: 3 });
+        cy += doc.heightOfString(business.address, { width: textW, lineGap: 3 }) + 8;
+      }
+      if (contactPhone || contactEmail) {
+        const contactLine = [contactPhone, contactEmail].filter(Boolean).join('   ·   ');
+        pdfFont(doc, PDF_TYPE.contact, PDF_THEME.primary, true);
+        doc.text(contactLine, boxX + boxInner + boxPad, cy, { width: textW });
+        cy += doc.heightOfString(contactLine, { width: textW }) + 8;
+      }
+      if (business.gstin) {
+        pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
+        doc.text(`GSTIN  ${business.gstin}`, boxX + boxInner + boxPad, cy, { width: textW });
+      }
+      y += boxH + 12;
     }
 
     const metaH = 72;

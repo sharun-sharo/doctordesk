@@ -605,8 +605,20 @@ async function downloadPdf(req, res, next) {
     y += panelH + 22;
 
     // ----- Line items table -----
-    const colW = [238, 42, 98, 117];
     const tableLeft = left;
+    const tablePad = 12;
+    const cellGap = 6;
+    const colDesc = 208;
+    const colQty = 44;
+    const colUnit = 86;
+    const colAmt = PDF_CONTENT - tablePad * 2 - colDesc - colQty - colUnit;
+    const xDesc = tableLeft + tablePad;
+    const xQty = xDesc + colDesc;
+    const xUnit = xQty + colQty;
+    const xAmt = xUnit + colUnit;
+    const wAmt = colAmt - cellGap;
+    const wUnit = colUnit - cellGap;
+    const wQty = colQty - cellGap;
     const rowH = 22;
     const headH = 26;
     const tableTop = y;
@@ -614,10 +626,10 @@ async function downloadPdf(req, res, next) {
     doc.rect(tableLeft, tableTop, PDF_CONTENT, headH).fill(PDF_THEME.primary);
     pdfFont(doc, PDF_TYPE.tableHead, PDF_THEME.white, true);
     const headY = tableTop + 8;
-    doc.text('Description', tableLeft + 10, headY, { width: colW[0] - 12 });
-    doc.text('Qty', tableLeft + colW[0], headY, { width: colW[1], align: 'right' });
-    doc.text('Unit price', tableLeft + colW[0] + colW[1], headY, { width: colW[2], align: 'right' });
-    doc.text('Amount', tableLeft + colW[0] + colW[1] + colW[2], headY, { width: colW[3] - 8, align: 'right' });
+    doc.text('Description', xDesc, headY, { width: colDesc - cellGap });
+    doc.text('Qty', xQty, headY, { width: wQty, align: 'right' });
+    doc.text('Unit price', xUnit, headY, { width: wUnit, align: 'right' });
+    doc.text('Amount', xAmt, headY, { width: wAmt, align: 'right' });
     y = tableTop + headH;
 
     (items || []).forEach((it, idx) => {
@@ -626,40 +638,38 @@ async function downloadPdf(req, res, next) {
       }
       doc.moveTo(tableLeft, y + rowH).lineTo(tableLeft + PDF_CONTENT, y + rowH).strokeColor(PDF_THEME.border).lineWidth(0.5).stroke();
       pdfFont(doc, PDF_TYPE.tableRow, PDF_THEME.body);
-      doc.text(String(it.description || '—').slice(0, 55), tableLeft + 10, y + 6, { width: colW[0] - 14 });
+      doc.text(String(it.description || '—').slice(0, 55), xDesc, y + 6, { width: colDesc - cellGap });
       pdfFont(doc, PDF_TYPE.tableRow, PDF_THEME.secondary);
-      doc.text(String(it.quantity), tableLeft + colW[0], y + 6, { width: colW[1], align: 'right' });
-      doc.text(formatMoney(it.unit_price), tableLeft + colW[0] + colW[1], y + 6, { width: colW[2], align: 'right' });
+      doc.text(String(it.quantity), xQty, y + 6, { width: wQty, align: 'right' });
+      doc.text(formatMoney(it.unit_price), xUnit, y + 6, { width: wUnit, align: 'right' });
       pdfFont(doc, PDF_TYPE.tableRow, PDF_THEME.primary, true);
-      doc.text(formatMoney(it.total), tableLeft + colW[0] + colW[1] + colW[2], y + 6, {
-        width: colW[3] - 8,
-        align: 'right',
-      });
+      doc.text(formatMoney(it.total), xAmt, y + 6, { width: wAmt, align: 'right' });
       y += rowH;
     });
     doc.rect(tableLeft, tableTop, PDF_CONTENT, y - tableTop).strokeColor(PDF_THEME.border).lineWidth(0.75).stroke();
     y += 18;
 
     // ----- Totals + payment (two columns) -----
-    const totalsBoxW = 232;
+    const totalsBoxW = 248;
     const totalsBoxX = right - totalsBoxW;
-    const totalsPad = 14;
+    const totalsPad = 16;
+    const totalsColGap = 10;
     const totalsInnerW = totalsBoxW - totalsPad * 2;
-    const totalsLabelW = 98;
-    const totalsValueW = totalsInnerW - totalsLabelW;
-    const totalsValueX = totalsBoxX + totalsPad + totalsLabelW;
+    const totalsLabelW = 94;
+    const totalsValueW = totalsInnerW - totalsLabelW - totalsColGap;
+    const totalsValueX = totalsBoxX + totalsPad + totalsLabelW + totalsColGap;
 
     const totalsBoxTop = y;
-    const totalsBoxH = 106;
+    const totalsBoxH = 112;
     doc.roundedRect(totalsBoxX, totalsBoxTop, totalsBoxW, totalsBoxH, 4).fillAndStroke(PDF_THEME.surface, PDF_THEME.border);
-    y = totalsBoxTop + 12;
+    y = totalsBoxTop + 14;
 
     const drawTotalRow = (label, value, bold = false, accent = false) => {
-      pdfFont(doc, bold ? PDF_TYPE.total : PDF_TYPE.body, accent ? PDF_THEME.accent : PDF_THEME.secondary, bold);
+      pdfFont(doc, PDF_TYPE.body, accent ? PDF_THEME.accent : PDF_THEME.secondary, accent);
       doc.text(label, totalsBoxX + totalsPad, y, { width: totalsLabelW });
-      pdfFont(doc, bold ? PDF_TYPE.total : PDF_TYPE.body, bold ? PDF_THEME.primary : PDF_THEME.body, bold);
-      doc.text(value, totalsValueX, y, { width: totalsValueW, align: 'right' });
-      y += bold ? 22 : 16;
+      pdfFont(doc, bold ? PDF_TYPE.total : PDF_TYPE.body, PDF_THEME.primary, bold);
+      doc.text(value, totalsValueX, y, { width: totalsValueW - 4, align: 'right' });
+      y += bold ? 24 : 17;
     };
 
     drawTotalRow('Subtotal', formatMoney(data.subtotal));

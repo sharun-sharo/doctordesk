@@ -1,20 +1,22 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Pencil } from 'lucide-react';
+import { Download, Pencil, Printer } from 'lucide-react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import Spinner from '../components/ui/Spinner';
 import Modal from '../components/ui/Modal';
 import FormInput from '../components/ui/FormInput';
 import DatePicker from '../components/ui/DatePicker';
-import StatusBadge from '../components/ui/StatusBadge';
+import InvoiceDocument from '../components/invoice/InvoiceDocument';
 import { toYYYYMMDD } from '../components/ui/calendar/calendarUtils';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+const API_ORIGIN = API_BASE.startsWith('http') ? API_BASE.replace(/\/api\/v1\/?$/, '') : '';
 
 export default function InvoiceView() {
   const { id } = useParams();
   const [invoice, setInvoice] = useState(null);
+  const [clinic, setClinic] = useState({ name: 'DoctorDesk', logoUrl: null });
   const [loading, setLoading] = useState(true);
   const [payModal, setPayModal] = useState(false);
   const [dateModal, setDateModal] = useState(false);
@@ -22,10 +24,30 @@ export default function InvoiceView() {
   const [invoiceDate, setInvoiceDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [savingDate, setSavingDate] = useState(false);
+  const [logoBuster] = useState(() => Date.now());
 
   useEffect(() => {
-    api.get(`/invoices/${id}`).then(({ data }) => setInvoice(data.data)).catch(() => toast.error('Not found')).finally(() => setLoading(false));
-  }, [id]);
+    Promise.all([
+      api.get(`/invoices/${id}`),
+      api.get('/settings').catch(() => ({ data: { data: {} } })),
+    ])
+      .then(([invRes, settingsRes]) => {
+        setInvoice(invRes.data.data);
+        const d = settingsRes.data?.data || {};
+        setClinic({
+          name: import.meta.env.VITE_CLINIC_NAME || 'DoctorDesk',
+          logoUrl: d.logoUrl ?? null,
+          logoOrigin: API_ORIGIN,
+          logoBuster,
+          address: d.invoiceAddress || '',
+          phone: d.invoicePhone || '',
+          email: d.invoiceEmail || '',
+          gstin: d.invoiceGstin || '',
+        });
+      })
+      .catch(() => toast.error('Not found'))
+      .finally(() => setLoading(false));
+  }, [id, logoBuster]);
 
   const openDateModal = () => {
     setInvoiceDate(toYYYYMMDD(new Date(invoice.created_at)) || '');
@@ -53,7 +75,11 @@ export default function InvoiceView() {
     setSaving(true);
     api.patch(`/invoices/${id}/payment`, { paid_amount: paid })
       .then(() => {
-        setInvoice((i) => ({ ...i, paid_amount: paid, payment_status: paid >= (invoice?.total || 0) ? 'paid' : paid > 0 ? 'partial' : 'pending' }));
+        setInvoice((i) => ({
+          ...i,
+          paid_amount: paid,
+          payment_status: paid >= (invoice?.total || 0) ? 'paid' : paid > 0 ? 'partial' : 'pending',
+        }));
         setPayModal(false);
         toast.success('Updated');
       })
@@ -61,96 +87,102 @@ export default function InvoiceView() {
       .finally(() => setSaving(false));
   };
 
-  if (loading || !invoice) return <div className="flex justify-center py-12"><Spinner size="lg" /></div>;
+  const downloadPdf = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`${API_BASE}/invoices/${id}/download`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${invoice.invoice_number}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (_) {
+      toast.error('Download failed');
+    }
+  };
+
+  const handlePrint = () => window.print();
+
+  if (loading || !invoice) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <h1 className="text-display text-slate-900">Invoice {invoice.invoice_number}</h1>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => setPayModal(true)} className="btn-primary">Update payment</button>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const token = localStorage.getItem('accessToken');
-                const res = await fetch(`${API_BASE}/invoices/${id}/download`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-                if (!res.ok) throw new Error('Download failed');
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `invoice-${invoice.invoice_number}.pdf`;
-                a.click();
-                URL.revokeObjectURL(url);
-              } catch (_) {
-                toast.error('Download failed');
-              }
-            }}
-            className="btn-secondary"
-          >
-            Download PDF
-          </button>
-          <Link to="/invoices" className="btn-secondary">Back</Link>
-        </div>
-      </div>
-      <div className="card max-w-2xl">
-        <dl className="grid grid-cols-2 gap-2 text-body mb-4">
-          <dt className="text-caption text-slate-500">Patient</dt><dd>{invoice.patient_name}</dd>
-          {invoice.doctor_name && (
-            <>
-              <dt className="text-caption text-slate-500">Doctor</dt><dd>{invoice.doctor_name}</dd>
-            </>
-          )}
-          <dt className="text-caption text-slate-500">Phone</dt><dd>{invoice.patient_phone || '-'}</dd>
-          <dt className="text-caption text-slate-500">Date</dt>
-          <dd className="flex items-center gap-2">
-            <span>{new Date(invoice.created_at).toLocaleDateString()}</span>
-            <button
-              type="button"
-              onClick={openDateModal}
-              className="inline-flex items-center gap-1 text-sm text-teal-600 hover:text-teal-700"
-              aria-label="Edit invoice date"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              Edit
+    <div className="invoice-page min-h-full bg-slate-100/80 pb-12 print:bg-white print:pb-0">
+      {/* Toolbar — hidden when printing */}
+      <div className="invoice-toolbar sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 px-4 py-4 backdrop-blur-md print:hidden sm:px-6">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-teal-700">Billing</p>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+              Invoice {invoice.invoice_number}
+            </h1>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => { setPaidAmount(String(invoice.paid_amount ?? '')); setPayModal(true); }} className="btn-primary">
+              Update payment
             </button>
-          </dd>
-          <dt className="text-caption text-slate-500">Status</dt><dd><StatusBadge status={invoice.payment_status} /></dd>
-        </dl>
-        <table className="w-full text-body">
-          <thead><tr className="border-b border-slate-100"><th className="text-left py-3 text-label text-slate-600">Item</th><th className="text-right py-3 text-label text-slate-600">Qty</th><th className="text-right py-3 text-label text-slate-600">Price</th><th className="text-right py-3 text-label text-slate-600">Total</th></tr></thead>
-          <tbody>
-            {(invoice.items || []).map((it) => (
-              <tr key={it.id} className="border-b border-slate-50">
-                <td className="py-2">{it.description}</td>
-                <td className="text-right">{it.quantity}</td>
-                <td className="text-right">₹{Number(it.unit_price).toFixed(2)}</td>
-                <td className="text-right">₹{Number(it.total).toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="mt-6 text-right space-y-1 text-body">
-          <p>Subtotal: ₹{Number(invoice.subtotal).toFixed(2)}</p>
-          <p>Tax: ₹{Number(invoice.tax_amount).toFixed(2)}</p>
-          <p>Discount: ₹{Number(invoice.discount).toFixed(2)}</p>
-          <p className="text-title text-slate-900">Total: ₹{Number(invoice.total).toFixed(2)}</p>
-          <p>Paid: ₹{Number(invoice.paid_amount).toFixed(2)}</p>
+            <button type="button" onClick={openDateModal} className="btn-secondary inline-flex items-center gap-2">
+              <Pencil className="h-4 w-4" />
+              Edit date
+            </button>
+            <button type="button" onClick={handlePrint} className="btn-secondary inline-flex items-center gap-2">
+              <Printer className="h-4 w-4" />
+              Print
+            </button>
+            <button type="button" onClick={downloadPdf} className="btn-secondary inline-flex items-center gap-2">
+              <Download className="h-4 w-4" />
+              PDF
+            </button>
+            <Link to="/invoices" className="btn-ghost">
+              Back
+            </Link>
+          </div>
         </div>
       </div>
+
+      {/* Invoice canvas */}
+      <div className="invoice-print-area mx-auto max-w-5xl px-4 py-8 print:max-w-none print:p-0 sm:px-6">
+        <InvoiceDocument invoice={invoice} clinic={clinic} />
+      </div>
+
       <Modal open={dateModal} onClose={() => setDateModal(false)} title="Edit invoice date">
         <DatePicker label="Invoice date" value={invoiceDate} onChange={setInvoiceDate} placeholder="Select date" />
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={() => setDateModal(false)} className="btn-secondary">Cancel</button>
-          <button type="button" onClick={updateDate} className="btn-primary" disabled={savingDate}>{savingDate ? 'Saving…' : 'Save'}</button>
+          <button type="button" onClick={() => setDateModal(false)} className="btn-secondary">
+            Cancel
+          </button>
+          <button type="button" onClick={updateDate} className="btn-primary" disabled={savingDate}>
+            {savingDate ? 'Saving…' : 'Save'}
+          </button>
         </div>
       </Modal>
       <Modal open={payModal} onClose={() => setPayModal(false)} title="Update payment">
-        <FormInput label="Paid amount" type="number" min={0} step={0.01} value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder="0.00" />
+        <FormInput
+          label="Paid amount"
+          type="number"
+          min={0}
+          step={0.01}
+          value={paidAmount}
+          onChange={(e) => setPaidAmount(e.target.value)}
+          placeholder="0.00"
+        />
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={() => setPayModal(false)} className="btn-secondary">Cancel</button>
-          <button type="button" onClick={updatePayment} className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+          <button type="button" onClick={() => setPayModal(false)} className="btn-secondary">
+            Cancel
+          </button>
+          <button type="button" onClick={updatePayment} className="btn-primary" disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
         </div>
       </Modal>
     </div>

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -166,5 +166,36 @@
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Premium invoice document (dashboard + print) */
+.invoice-document {
+  font-family: 'Inter', 'Poppins', system-ui, sans-serif;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  body {
+    background: #fff !important;
+  }
+  .invoice-toolbar,
+  .sidebar,
+  nav,
+  header:not(.invoice-document header) {
+    display: none !important;
+  }
+  .invoice-print-area {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .invoice-document {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: none !important;
+    border-radius: 0 !important;
   }
 }

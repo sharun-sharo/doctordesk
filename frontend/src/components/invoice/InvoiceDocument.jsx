@@ -60,7 +60,7 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
     return m != null ? `${h12}:${String(m).padStart(2, '0')} ${ampm}` : `${h12} ${ampm}`;
   })();
 
-  const logoSrc = clinic.logoUrl || null;
+  const headerSrc = clinic.headerUrl || clinic.logoUrl || null;
 
   return (
     <article
@@ -78,17 +78,17 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
       </div>
 
       <div className="relative px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-5 md:px-10 md:pb-10 print:p-8">
-        {/* Header row 1: logo centered; row 2: clinic (left) + invoice (right) */}
+        {/* Row 1: full-width invoice header; row 2: clinic (left) + invoice (right) */}
         <header className="mb-6 space-y-4 border-b border-slate-100 pb-6">
-          <div className="flex justify-center px-2 py-2 sm:px-6 sm:py-3">
-            {logoSrc ? (
+          <div className="w-full overflow-hidden rounded-lg bg-white">
+            {headerSrc ? (
               <img
-                src={logoSrc}
+                src={headerSrc}
                 alt=""
-                className="mx-auto h-auto w-full max-h-32 max-w-[min(94%,32rem)] object-contain object-center sm:max-h-36 sm:max-w-[36rem] print:max-h-32"
+                className="h-auto max-h-40 w-full object-contain object-center sm:max-h-44 print:max-h-40"
               />
             ) : (
-              <p className="text-center text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+              <p className="py-4 text-center text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
                 {clinic.name || 'Clinic'}
               </p>
             )}

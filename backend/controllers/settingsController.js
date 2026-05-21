@@ -179,7 +179,7 @@ async function getSettings(req, res, next) {
   try {
     await ensureClinicSettingsTable();
     const resolvedFilename = await getClinicLogoFilename(req.user?.id || null);
-    const logoUrl = resolvedFilename
+    const headerUrl = resolvedFilename
       ? `${API_PREFIX}/uploads/clinic/${resolvedFilename}?v=${Date.now()}`
       : null;
     const business = await getClinicBusinessSettings(req.user?.id || null);
@@ -187,7 +187,8 @@ async function getSettings(req, res, next) {
       success: true,
       data: {
         clinicName: CLINIC_NAME,
-        logoUrl,
+        headerUrl,
+        logoUrl: headerUrl,
         invoiceAddress: business.address || '',
         invoicePhone: business.phone || '',
         invoiceEmail: business.email || '',
@@ -225,10 +226,14 @@ async function uploadLogo(req, res, next) {
 
     removeStaleLogoFiles(userId, filename);
     const synced = await syncLogoFileFromDb(userId);
-    const logoUrl = synced
+    const headerUrl = synced
       ? `${API_PREFIX}/uploads/clinic/${synced}?v=${Date.now()}`
       : null;
-    res.json({ success: true, data: { logoUrl }, message: 'Logo updated' });
+    res.json({
+      success: true,
+      data: { headerUrl, logoUrl: headerUrl },
+      message: 'Invoice header updated',
+    });
   } catch (err) {
     next(err);
   }

@@ -36,7 +36,8 @@ export default function InvoiceView() {
         const bust = Date.now();
         setClinic({
           name: import.meta.env.VITE_CLINIC_NAME || 'DoctorDesk',
-          logoUrl: logoImageSrc(d.logoUrl, API_ORIGIN, bust),
+          headerUrl: logoImageSrc(d.headerUrl ?? d.logoUrl, API_ORIGIN, bust),
+          logoUrl: logoImageSrc(d.headerUrl ?? d.logoUrl, API_ORIGIN, bust),
           address: d.invoiceAddress || '',
           phone: d.invoicePhone || '',
           email: d.invoiceEmail || '',

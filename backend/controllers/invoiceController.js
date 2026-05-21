@@ -367,7 +367,7 @@ async function downloadPdf(req, res, next) {
       data,
       items,
       business,
-      logoPath,
+      headerPath: logoPath,
       clinicName: process.env.CLINIC_NAME || 'DoctorDesk',
     });
 

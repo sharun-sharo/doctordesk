@@ -20,13 +20,13 @@ export default function Invoices() {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState({
-    logoUrl: null,
+    headerUrl: null,
     invoiceAddress: '',
     invoicePhone: '',
     invoiceEmail: '',
     invoiceGstin: '',
   });
-  const [logoUploading, setLogoUploading] = useState(false);
+  const [headerUploading, setHeaderUploading] = useState(false);
   const [businessSaving, setBusinessSaving] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -35,7 +35,7 @@ export default function Invoices() {
       const d = data.data || {};
       setSettings((s) => ({
         ...s,
-        logoUrl: d.logoUrl ?? s.logoUrl,
+        headerUrl: d.headerUrl ?? d.logoUrl ?? s.headerUrl,
         invoiceAddress: d.invoiceAddress ?? '',
         invoicePhone: d.invoicePhone ?? '',
         invoiceEmail: d.invoiceEmail ?? '',
@@ -104,34 +104,34 @@ export default function Invoices() {
     }
   };
 
-  const [logoBuster, setLogoBuster] = useState(Date.now());
+  const [headerBuster, setHeaderBuster] = useState(Date.now());
 
-  const handleLogoUpload = (e) => {
+  const handleHeaderUpload = (e) => {
     const file = e.target?.files?.[0];
     if (!file || !file.type.startsWith('image/')) {
       toast.error('Please select an image (PNG, JPG, etc.)');
       return;
     }
-    setLogoUploading(true);
+    setHeaderUploading(true);
     const formData = new FormData();
     formData.append('logo', file);
     api
-      .post('/settings/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      .post('/settings/header', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       .then(({ data }) => {
         const bust = Date.now();
-        const newUrl = data.data?.logoUrl ?? data.logoUrl ?? null;
-        setSettings((s) => ({ ...s, logoUrl: newUrl }));
-        setLogoBuster(bust);
-        toast.success('Logo updated. It will appear on new invoice PDFs.');
+        const newUrl = data.data?.headerUrl ?? data.data?.logoUrl ?? data.headerUrl ?? data.logoUrl ?? null;
+        setSettings((s) => ({ ...s, headerUrl: newUrl }));
+        setHeaderBuster(bust);
+        toast.success('Invoice header updated. It will appear on downloaded PDFs.');
       })
-      .catch(() => toast.error('Failed to upload logo'))
+      .catch(() => toast.error('Failed to upload invoice header'))
       .finally(() => {
-        setLogoUploading(false);
+        setHeaderUploading(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
       });
   };
 
-  const logoSrc = logoImageSrc(settings.logoUrl, API_ORIGIN || window.location.origin, logoBuster);
+  const headerSrc = logoImageSrc(settings.headerUrl, API_ORIGIN || window.location.origin, headerBuster);
 
   const handleSaveBusiness = () => {
     setBusinessSaving(true);
@@ -215,41 +215,50 @@ export default function Invoices() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-slate-800">Invoice</h1>
-        <p className="text-sm text-slate-500 mt-1">Download payment receipts as PDF. Add a logo to show on all invoices.</p>
+        <p className="text-sm text-slate-500 mt-1">
+          Download payment receipts as PDF. Upload a header image for the top of every invoice.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-1">Invoice logo</h3>
-          <p className="text-body text-slate-500 mb-3">This logo appears on downloaded PDF invoices. JPEG, PNG, WebP or GIF, max 2MB.</p>
-          <div className="flex flex-wrap items-center gap-4">
-            {logoSrc ? (
-              <div className="flex h-28 min-w-[14rem] max-w-[32rem] flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white px-5 py-3 sm:h-32 sm:max-w-[36rem]">
-                <img src={logoSrc} alt="Clinic logo" className="h-auto max-h-full w-full max-w-full object-contain object-center" />
-              </div>
-            ) : (
-              <div className="flex h-28 w-52 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-slate-400 sm:h-32">
-                <Image className="h-8 w-8" />
-              </div>
-            )}
+          <h3 className="text-sm font-semibold text-slate-700 mb-1">Invoice header</h3>
+          <p className="text-body text-slate-500 mb-3">
+            Wide banner shown at the top of PDF invoices (e.g. clinic name and branding). JPEG, PNG, WebP or GIF, max 2MB.
+          </p>
+          <div className="space-y-3">
+            <div className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white">
+              {headerSrc ? (
+                <img
+                  src={headerSrc}
+                  alt="Invoice header preview"
+                  className="h-auto max-h-44 w-full object-contain object-center sm:max-h-48"
+                />
+              ) : (
+                <div className="flex h-28 flex-col items-center justify-center gap-2 bg-slate-50 text-slate-400 sm:h-32">
+                  <Image className="h-8 w-8" aria-hidden />
+                  <span className="text-xs">No header uploaded</span>
+                </div>
+              )}
+            </div>
             <input
               ref={fileInputRef}
               type="file"
               accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
               className="hidden"
-              onChange={handleLogoUpload}
+              onChange={handleHeaderUpload}
             />
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={logoUploading}
+              disabled={headerUploading}
               className="btn-secondary inline-flex items-center gap-2"
             >
-              {logoUploading ? (
+              {headerUploading ? (
                 <span className="animate-pulse">Uploading…</span>
               ) : (
                 <>
-                  <Upload className="h-4 w-4" /> Choose image
+                  <Upload className="h-4 w-4" /> Upload header image
                 </>
               )}
             </button>

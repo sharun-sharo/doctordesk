@@ -99,20 +99,20 @@ function measureContactRow(doc, phone, email, maxW) {
   return pdfTextBlockHeight(doc, fallback, maxW, PDF_TYPE.contact);
 }
 
-/** Premium header logo: ~42% larger than prior layout, aspect ratio preserved. */
-const LOGO_MAX_WIDTH_RATIO = 0.9;
-const LOGO_MAX_HEIGHT_PT = 118;
+/** Full-width invoice header banner; aspect ratio preserved. */
+const HEADER_MAX_WIDTH_RATIO = 1;
+const HEADER_MAX_HEIGHT_PT = 110;
 
-function drawCenteredLogo(doc, logoPath, startY, contentLeft, contentWidth) {
-  const maxW = contentWidth * LOGO_MAX_WIDTH_RATIO;
-  const maxH = LOGO_MAX_HEIGHT_PT;
-  const img = doc.openImage(logoPath);
+function drawInvoiceHeader(doc, imagePath, startY, contentLeft, contentWidth) {
+  const maxW = contentWidth * HEADER_MAX_WIDTH_RATIO;
+  const maxH = HEADER_MAX_HEIGHT_PT;
+  const img = doc.openImage(imagePath);
   const scale = Math.min(maxW / img.width, maxH / img.height);
   const w = img.width * scale;
   const h = img.height * scale;
   const x = contentLeft + (contentWidth - w) / 2;
-  doc.image(logoPath, x, startY, { width: w, height: h });
-  return h + 6;
+  doc.image(imagePath, x, startY, { width: w, height: h });
+  return h + 8;
 }
 
 function drawContactRow(doc, x, y, phone, email, maxW, color) {
@@ -154,7 +154,18 @@ function patientAgeGender(data) {
 }
 
 
-async function renderInvoicePdf(doc, { data, items, business = {}, logoPath = null, clinicName = process.env.CLINIC_NAME || 'DoctorDesk' }) {
+async function renderInvoicePdf(
+  doc,
+  {
+    data,
+    items,
+    business = {},
+    headerPath = null,
+    logoPath = null,
+    clinicName = process.env.CLINIC_NAME || 'DoctorDesk',
+  }
+) {
+    const headerImagePath = headerPath || logoPath;
     const left = PDF_MARGIN;
     const right = PDF_WIDTH - PDF_MARGIN;
             const doctorName = data.doctor_name || data.creator_name || '—';
@@ -166,30 +177,29 @@ async function renderInvoicePdf(doc, { data, items, business = {}, logoPath = nu
     // Accent top bar
     doc.rect(0, 0, PDF_WIDTH, 4).fill(PDF_THEME.accent);
 
-    // ----- Header row 1: logo centered; row 2: clinic (left) + invoice (right) -----
+    // ----- Row 1: full-width invoice header image; row 2: clinic (left) + invoice (right) -----
     const headerStartY = 8;
     let y = headerStartY;
     const headerGap = 12;
     const rowGap = 10;
     const metaBoxW = 188;
     const metaBoxX = right - metaBoxW;
-    const logoY = headerStartY;
 
-    let logoBlockH = 0;
-    if (logoPath) {
+    let headerBlockH = 0;
+    if (headerImagePath) {
       try {
-        logoBlockH = drawCenteredLogo(doc, logoPath, logoY, left, PDF_CONTENT);
+        headerBlockH = drawInvoiceHeader(doc, headerImagePath, headerStartY, left, PDF_CONTENT);
       } catch (_) {
         /* fall through to clinic name */
       }
     }
-    if (!logoBlockH && clinicName) {
+    if (!headerBlockH && clinicName) {
       pdfFont(doc, PDF_TYPE.title + 2, PDF_THEME.primary, true);
-      doc.text(clinicName, left, logoY, { width: PDF_CONTENT, align: 'center' });
-      logoBlockH = pdfTextBlockHeight(doc, clinicName, PDF_CONTENT, PDF_TYPE.title + 2) + 10;
+      doc.text(clinicName, left, headerStartY, { width: PDF_CONTENT, align: 'center' });
+      headerBlockH = pdfTextBlockHeight(doc, clinicName, PDF_CONTENT, PDF_TYPE.title + 2) + 10;
     }
 
-    const row2Y = headerStartY + logoBlockH + rowGap;
+    const row2Y = headerStartY + headerBlockH + rowGap;
     const clinicBoxX = left;
     const clinicBoxW = Math.max(200, metaBoxX - clinicBoxX - headerGap);
 

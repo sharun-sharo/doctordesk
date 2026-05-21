@@ -75,7 +75,7 @@ async function main() {
     data: mockData,
     items: mockItems,
     business: mockBusiness,
-    logoPath,
+    headerPath: logoPath,
     clinicName: 'ALHAM DENTAL CARE',
   });
 

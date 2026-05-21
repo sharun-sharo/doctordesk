@@ -37,16 +37,6 @@ const PDF_TYPE = {
   footer: 8,
 };
 
-function formatTime(t) {
-  if (!t) return '';
-  const s = String(t);
-  const [h, m] = s.split(':').map(Number);
-  if (h == null) return s;
-  const h12 = h % 12 || 12;
-  const ampm = h < 12 ? 'AM' : 'PM';
-  return m != null ? `${h12}:${String(m).padStart(2, '0')} ${ampm}` : `${h12} ${ampm}`;
-}
-
 function pdfFont(doc, size, color, bold = false) {
   doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).fillColor(color);
 }
@@ -63,7 +53,6 @@ function formatMoney(n) {
 
 const PDF_ICON = 10;
 const PDF_ICON_GAP = 6;
-const PDF_CONTACT_ITEM_GAP = 12;
 
 function pdfIconStyle(doc, color) {
   doc.save();
@@ -98,30 +87,139 @@ function drawPdfMailIcon(doc, x, y, color) {
   doc.restore();
 }
 
-function measureAddressRow(doc, address, maxW) {
-  const textW = Math.max(40, maxW - PDF_ICON - PDF_ICON_GAP);
-  pdfFont(doc, PDF_TYPE.contact, PDF_THEME.body);
-  return Math.max(PDF_TYPE.contact + 4, pdfTextBlockHeight(doc, address, textW, PDF_TYPE.contact));
+/** Contact bar — match invoice reference layout and colours. */
+const PDF_CONTACT = {
+  label: '#005EB8',
+  iconTop: '#5eb8f0',
+  iconBottom: '#005EB8',
+  divider: '#c8d9e8',
+  body: '#000000',
+};
+
+/** Wider contact band — uses left/right page space (less inset than body). */
+const PDF_CONTACT_MARGIN = 28;
+
+const PDF_COL_ICON_R = 12;
+const PDF_COL_PAD = 8;
+const PDF_COL_ICON_GAP = 8;
+const PDF_COL_LABEL_SIZE = 9;
+const PDF_COL_BODY_SIZE = 8;
+const PDF_COL_LABEL_GAP = 3;
+const PDF_COL_DIVIDER_HEIGHT = 52;
+
+function formatPdfContactValue(value, type) {
+  const s = String(value || '')
+    .replace(/\r?\n+/g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return s;
 }
 
-function drawAddressRow(doc, x, cy, address, maxW, color) {
-  drawPdfMapPinIcon(doc, x, cy + 0.5, color);
-  pdfFont(doc, PDF_TYPE.contact, PDF_THEME.body);
-  const textW = Math.max(40, maxW - PDF_ICON - PDF_ICON_GAP);
-  doc.text(address, x + PDF_ICON + PDF_ICON_GAP, cy, { width: textW, lineGap: 2 });
-  return measureAddressRow(doc, address, maxW);
+function drawPdfIconBadge(doc, x, y, type) {
+  const cx = x + PDF_COL_ICON_R;
+  const cy = y + PDF_COL_ICON_R;
+  const r = PDF_COL_ICON_R;
+  const grad = doc.linearGradient(cx, cy - r, cx, cy + r);
+  grad.stop(0, PDF_CONTACT.iconTop).stop(1, PDF_CONTACT.iconBottom);
+  doc.circle(cx, cy, r).fill(grad);
+  const white = PDF_THEME.white;
+  const ix = x + PDF_COL_ICON_R - PDF_ICON / 2;
+  const iy = y + PDF_COL_ICON_R - PDF_ICON / 2 + 0.5;
+  if (type === 'address') drawPdfMapPinIcon(doc, ix, iy, white);
+  else if (type === 'email') drawPdfMailIcon(doc, ix, iy, white);
+  else drawPdfPhoneIcon(doc, ix, iy, white);
 }
 
-function measureContactRow(doc, phone, email, maxW) {
-  pdfFont(doc, PDF_TYPE.contact, PDF_THEME.primary, true);
-  let usedW = 0;
-  if (phone) usedW += PDF_ICON + PDF_ICON_GAP + doc.widthOfString(phone);
-  if (phone && email) usedW += PDF_CONTACT_ITEM_GAP;
-  if (email) usedW += PDF_ICON + PDF_ICON_GAP + doc.widthOfString(email);
-  const singleLineH = PDF_TYPE.contact + 4;
-  if (usedW <= maxW) return singleLineH;
-  const fallback = [phone, email].filter(Boolean).join('   ·   ');
-  return pdfTextBlockHeight(doc, fallback, maxW, PDF_TYPE.contact);
+function measurePdfContactColumn(doc, label, value, type, colW) {
+  const displayValue = formatPdfContactValue(value, type);
+  const iconD = PDF_COL_ICON_R * 2;
+  const textLeft = PDF_COL_PAD + iconD + PDF_COL_ICON_GAP;
+  const contentW = Math.max(40, colW - textLeft - PDF_COL_PAD);
+  const labelH = PDF_COL_LABEL_SIZE + 2;
+  pdfFont(doc, PDF_COL_BODY_SIZE, PDF_CONTACT.body);
+  const valueH = pdfTextBlockHeight(doc, displayValue, contentW, PDF_COL_BODY_SIZE);
+  const textBlockH = labelH + PDF_COL_LABEL_GAP + valueH;
+  return PDF_COL_PAD + Math.max(iconD, textBlockH) + PDF_COL_PAD;
+}
+
+function drawPdfContactColumn(doc, colX, colY, colW, { type, label, value }) {
+  const displayValue = formatPdfContactValue(value, type);
+  const topY = colY + PDF_COL_PAD;
+  const iconX = colX + PDF_COL_PAD;
+  drawPdfIconBadge(doc, iconX, topY, type);
+
+  const textLeft = colX + PDF_COL_PAD + PDF_COL_ICON_R * 2 + PDF_COL_ICON_GAP;
+  const contentW = Math.max(40, colW - (textLeft - colX) - PDF_COL_PAD);
+
+  pdfFont(doc, PDF_COL_LABEL_SIZE, PDF_CONTACT.label, true);
+  doc.text(label, textLeft, topY + 1, { lineBreak: false });
+
+  const labelH = PDF_COL_LABEL_SIZE + 2;
+  const contentY = topY + 1 + labelH + PDF_COL_LABEL_GAP;
+  pdfFont(doc, PDF_COL_BODY_SIZE, PDF_CONTACT.body);
+  doc.text(displayValue, textLeft, contentY, { width: contentW, lineGap: 2 });
+}
+
+function buildPdfContactColumns(business, contactPhone, contactEmail) {
+  const columns = [];
+  if (business.address) columns.push({ type: 'address', label: 'ADDRESS', value: business.address });
+  if (contactEmail) columns.push({ type: 'email', label: 'EMAIL', value: contactEmail });
+  if (contactPhone) columns.push({ type: 'phone', label: 'PHONE', value: contactPhone });
+  return columns;
+}
+
+function measurePdfContactColumns(doc, columns, boxW) {
+  if (!columns.length) return 0;
+  const dividerW = columns.length > 1 ? 1 : 0;
+  const colW = (boxW - (columns.length - 1) * dividerW) / columns.length;
+  let columnsH = 0;
+  for (const col of columns) {
+    columnsH = Math.max(columnsH, measurePdfContactColumn(doc, col.label, col.value, col.type, colW));
+  }
+  return columnsH;
+}
+
+function measurePdfGstinRow(doc, gstin, boxW) {
+  if (!gstin) return 0;
+  const gstLine = `GSTIN  ${gstin}`;
+  pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
+  return 8 + pdfTextBlockHeight(doc, gstLine, boxW - PDF_COL_PAD * 2, PDF_TYPE.bodySm);
+}
+
+function drawPdfContactBar(doc, boxX, boxY, boxW, columnsH, columns, gstin) {
+  const dividerW = columns.length > 1 ? 1 : 0;
+  const colW = (boxW - (columns.length - 1) * dividerW) / columns.length;
+
+  const dividerH = Math.min(PDF_COL_DIVIDER_HEIGHT, Math.max(28, columnsH - 16));
+  const dividerY0 = boxY + (columnsH - dividerH) / 2;
+
+  for (let i = 0; i < columns.length; i++) {
+    const colX = boxX + i * (colW + dividerW);
+    if (i > 0) {
+      doc
+        .moveTo(colX, dividerY0)
+        .lineTo(colX, dividerY0 + dividerH)
+        .strokeColor(PDF_CONTACT.divider)
+        .lineWidth(0.75)
+        .stroke();
+    }
+    drawPdfContactColumn(doc, colX, boxY, colW, columns[i]);
+  }
+
+  if (gstin) {
+    const gstY = boxY + columnsH + 4;
+    doc
+      .moveTo(boxX + PDF_COL_PAD, gstY - 3)
+      .lineTo(boxX + boxW - PDF_COL_PAD, gstY - 3)
+      .strokeColor(PDF_CONTACT.divider)
+      .lineWidth(0.5)
+      .stroke();
+    pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
+    doc.text(`GSTIN  ${gstin}`, boxX + PDF_COL_PAD, gstY, {
+      width: boxW - PDF_COL_PAD * 2,
+      lineBreak: false,
+    });
+  }
 }
 
 /** Edge-to-edge header: full page width, height capped, image covers the band (like CSS object-cover). */
@@ -145,38 +243,16 @@ function drawInvoiceHeader(doc, imagePath, startY) {
   return boxH + 6;
 }
 
-function drawContactRow(doc, x, y, phone, email, maxW, color) {
-  pdfFont(doc, PDF_TYPE.contact, PDF_THEME.primary, true);
-  let cx = x;
-  const iconY = y + 0.5;
-  const textY = y;
-
-  if (phone) {
-    drawPdfPhoneIcon(doc, cx, iconY, color);
-    cx += PDF_ICON + PDF_ICON_GAP;
-    doc.text(phone, cx, textY, { lineBreak: false });
-    cx += doc.widthOfString(phone);
-    if (email) cx += PDF_CONTACT_ITEM_GAP;
-  }
-  if (email) {
-    drawPdfMailIcon(doc, cx, iconY, color);
-    cx += PDF_ICON + PDF_ICON_GAP;
-    const remaining = maxW - (cx - x);
-    doc.text(email, cx, textY, { width: Math.max(40, remaining), lineBreak: false });
-  }
-  return measureContactRow(doc, phone, email, maxW);
-}
-
-function formatVisitLine(data) {
-  if (!data.appointment_date && !data.start_time) return '';
-  const apptDate = data.appointment_date
-    ? new Date(data.appointment_date).toLocaleDateString('en-IN', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-      })
-    : '';
-  return [apptDate, formatTime(data.start_time)].filter(Boolean).join(' · ');
+function formatInvoiceDateDMY(dateInput) {
+  if (!dateInput) return '';
+  const iso = String(dateInput).slice(0, 10);
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${d.getFullYear()}`;
 }
 
 function patientAgeGender(data) {
@@ -239,8 +315,8 @@ async function renderInvoicePdf(
     }
 
     const row2Y = headerStartY + headerBlockH + rowGap;
-    const clinicBoxX = left;
-    const clinicBoxW = PDF_CONTENT;
+    const clinicBoxX = PDF_CONTACT_MARGIN;
+    const clinicBoxW = PDF_WIDTH - PDF_CONTACT_MARGIN * 2;
 
     const contactPhone = business.phone || '';
     const contactEmail = business.email || '';
@@ -248,52 +324,13 @@ async function renderInvoicePdf(
     let clinicBoxH = 0;
 
     if (hasClinicContact) {
-      const boxPad = 8;
-      const textW = clinicBoxW - boxPad * 2 - 4;
-      const lineGap = 5;
-      const hasContactRow = contactPhone || contactEmail;
+      const columns = buildPdfContactColumns(business, contactPhone, contactEmail);
+      const columnsH = measurePdfContactColumns(doc, columns, clinicBoxW);
+      const gstinH = measurePdfGstinRow(doc, business.gstin, clinicBoxW);
+      clinicBoxH = columnsH + gstinH;
 
-      let contentH = 0;
-      if (business.address) {
-        contentH += measureAddressRow(doc, business.address, textW) + lineGap;
-      }
-      if (hasContactRow) {
-        contentH += measureContactRow(doc, contactPhone, contactEmail, textW);
-        if (business.gstin) contentH += lineGap;
-      }
-      if (business.gstin) {
-        const gstLine = `GSTIN  ${business.gstin}`;
-        pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
-        contentH += pdfTextBlockHeight(doc, gstLine, textW, PDF_TYPE.bodySm);
-      }
-
-      clinicBoxH = contentH + boxPad * 2;
-      doc
-        .roundedRect(clinicBoxX, row2Y, clinicBoxW, clinicBoxH, 4)
-        .fillAndStroke(PDF_THEME.accentSoft, PDF_THEME.border);
-      doc.rect(clinicBoxX, row2Y, 4, clinicBoxH).fill(PDF_THEME.accent);
-
-      let cy = row2Y + boxPad;
-
-      if (business.address) {
-        cy += drawAddressRow(doc, clinicBoxX + boxPad + 4, cy, business.address, textW, PDF_THEME.body);
-        cy += lineGap;
-      }
-      if (hasContactRow) {
-        cy += drawContactRow(
-          doc,
-          clinicBoxX + boxPad + 4,
-          cy,
-          contactPhone,
-          contactEmail,
-          textW,
-          PDF_THEME.primary
-        );
-        if (business.gstin) cy += lineGap;
-      }
-      if (business.gstin) {
-        pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
-        doc.text(`GSTIN  ${business.gstin}`, clinicBoxX + boxPad + 4, cy, { width: textW });
+      if (clinicBoxH > 0) {
+        drawPdfContactBar(doc, clinicBoxX, row2Y, clinicBoxW, columnsH, columns, business.gstin);
       }
     }
 
@@ -379,9 +416,9 @@ async function renderInvoicePdf(
     };
 
     const patientAg = patientAgeGender(data);
-    const visitLine = formatVisitLine(data);
+    const visitDate = formatInvoiceDateDMY(data.appointment_date);
     const phonePart = data.patient_phone ? `Phone  ${data.patient_phone}` : 'Phone  —';
-    const patientContactLine = visitLine ? `${phonePart}   Visit  ${visitLine}` : phonePart;
+    const patientContactLine = visitDate ? `${phonePart}   ${visitDate}` : phonePart;
     const patientLines = [patientContactLine];
     if (data.patient_address) patientLines.push(`Address  ${data.patient_address}`);
 
@@ -470,22 +507,27 @@ async function renderInvoicePdf(
     y += 10;
     drawTotalRow('Amount due', formatMoney(data.total), true, true);
 
-    const payY = totalsBoxTop + 12;
-    const badgeW = 58;
+    const payRowTop = totalsBoxTop + 12;
     const badgeH = 18;
     const badgeColor = isPaid ? PDF_THEME.paid : PDF_THEME.pending;
     const badgeBg = isPaid ? '#ecfdf5' : '#fffbeb';
     const statusLabel = payStatus.charAt(0).toUpperCase() + payStatus.slice(1);
 
-    pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
-    doc.text('PAYMENT', left, payY, { lineBreak: false });
-    const badgeX = left + doc.widthOfString('PAYMENT') + 8;
-    doc.roundedRect(badgeX, payY - 3, badgeW, badgeH, 3).fill(badgeBg);
     pdfFont(doc, PDF_TYPE.bodySm, badgeColor, true);
-    doc.text(statusLabel, badgeX, payY + 1, { width: badgeW, align: 'center' });
+    const badgeW = Math.max(52, doc.widthOfString(statusLabel) + 16);
+    pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
+    const labelSize = PDF_TYPE.section;
+    const labelY = payRowTop + (badgeH - labelSize) / 2 + 2;
+    doc.text('PAYMENT', left, labelY, { lineBreak: false });
+    const badgeX = left + doc.widthOfString('PAYMENT') + 10;
+    doc.roundedRect(badgeX, payRowTop, badgeW, badgeH, 3).fill(badgeBg);
+    pdfFont(doc, PDF_TYPE.bodySm, badgeColor, true);
+    const statusSize = PDF_TYPE.bodySm;
+    const statusY = payRowTop + (badgeH - statusSize) / 2 + 2;
+    doc.text(statusLabel, badgeX, statusY, { width: badgeW, align: 'center' });
 
     const amountWords = amountInWords(data.total);
-    const paidLineY = payY + 22;
+    const paidLineY = payRowTop + badgeH + 8;
     const paidLabel = `Paid  ${formatMoney(data.paid_amount)}`;
     pdfFont(doc, PDF_TYPE.body, PDF_THEME.body);
     doc.text(paidLabel, left, paidLineY, { lineBreak: false });

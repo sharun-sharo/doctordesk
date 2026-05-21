@@ -1,5 +1,57 @@
+import { Fragment } from 'react';
 import { FileText, Mail, MapPin, Phone, Stethoscope, User, Wallet } from 'lucide-react';
-import { amountInWords, formatMoney, patientAge } from '../../utils/amountInWords';
+import { amountInWords, formatInvoiceDateDMY, formatMoney, patientAge } from '../../utils/amountInWords';
+
+/** Contact bar tokens — match invoice reference (#005EB8, light dividers). */
+const INVOICE_CONTACT = {
+  label: '#005EB8',
+  iconFrom: '#5eb8f0',
+  iconTo: '#005EB8',
+  divider: '#c8d9e8',
+  body: '#000000',
+};
+
+function InvoiceContactDivider() {
+  return (
+    <div className="flex shrink-0 items-center self-center py-2" aria-hidden>
+      <div className="h-[52px] w-px" style={{ backgroundColor: INVOICE_CONTACT.divider }} />
+    </div>
+  );
+}
+
+function formatContactDisplay(value) {
+  return String(value)
+    .replace(/\r?\n+/g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function InvoiceContactColumn({ icon: Icon, label, value }) {
+  if (!value) return null;
+  const display = formatContactDisplay(value);
+  return (
+    <div className="flex min-w-0 flex-1 items-start gap-[10px] py-4 pl-3 pr-3 first:pl-5 last:pr-5 sm:py-3.5">
+      <div
+        className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full"
+        style={{ background: `linear-gradient(to bottom, ${INVOICE_CONTACT.iconFrom}, ${INVOICE_CONTACT.iconTo})` }}
+        aria-hidden
+      >
+        <Icon className="h-[18px] w-[18px] text-white" strokeWidth={2.5} />
+      </div>
+      <div className="min-w-0 flex-1 pt-px">
+        <p className="text-[13px] font-bold uppercase leading-none" style={{ color: INVOICE_CONTACT.label }}>
+          {label}
+        </p>
+        <p
+          className="mt-[4px] text-[12px] font-normal leading-[1.4]"
+          style={{ color: INVOICE_CONTACT.body }}
+        >
+          {display}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function DetailRow({ icon: Icon, label, value }) {
   if (!value || value === '—') return null;
@@ -26,7 +78,7 @@ function PaymentStatusPill({ status }) {
   const label = s === 'paid' ? 'Paid' : s === 'partial' ? 'Partial' : 'Pending';
   return (
     <span
-      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ring-1 ${styles[s] || styles.pending}`}
+      className={`inline-flex h-6 items-center rounded-full px-3 text-xs font-bold leading-none ring-1 ${styles[s] || styles.pending}`}
     >
       {label}
     </span>
@@ -43,24 +95,15 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
   const gender = invoice.patient_gender
     ? String(invoice.patient_gender).charAt(0).toUpperCase() + String(invoice.patient_gender).slice(1)
     : null;
-  const visitDate = invoice.appointment_date
-    ? new Date(invoice.appointment_date).toLocaleDateString('en-IN', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : null;
-  const visitTime = (() => {
-    if (!invoice.start_time) return null;
-    const [h, m] = String(invoice.start_time).split(':').map(Number);
-    if (Number.isNaN(h)) return null;
-    const h12 = h % 12 || 12;
-    const ampm = h < 12 ? 'am' : 'pm';
-    return m != null ? `${h12}:${String(m).padStart(2, '0')} ${ampm}` : `${h12} ${ampm}`;
-  })();
+  const visitDate = formatInvoiceDateDMY(invoice.appointment_date) || null;
 
   const headerSrc = clinic.headerUrl || clinic.logoUrl || null;
+
+  const contactColumns = [
+    { key: 'address', icon: MapPin, label: 'ADDRESS', value: clinic.address },
+    { key: 'email', icon: Mail, label: 'EMAIL', value: clinic.email },
+    { key: 'phone', icon: Phone, label: 'PHONE', value: clinic.phone },
+  ].filter((c) => c.value);
 
   return (
     <article
@@ -92,43 +135,39 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
         <Stethoscope className="h-[280px] w-[280px] text-teal-900" strokeWidth={0.5} />
       </div>
 
-      <div className="relative px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-5 md:px-10 md:pb-10 print:p-8">
-        <header className="mb-6 space-y-4 border-b border-slate-100 pb-6">
-          {(clinic.address || clinic.phone || clinic.email) && (
-              <section className="w-full rounded-xl border border-teal-100/80 border-l-4 border-l-teal-600 bg-gradient-to-br from-teal-50/80 to-slate-50/50 px-4 py-3 shadow-sm">
-                <div className="space-y-1.5 text-sm">
-                  {clinic.address && (
-                    <p className="inline-flex items-start gap-2 leading-snug text-slate-700">
-                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 stroke-[2] text-teal-600" aria-hidden />
-                      <span>{clinic.address}</span>
-                    </p>
-                  )}
-                  {(clinic.phone || clinic.email) && (
-                    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 font-medium text-slate-800">
-                      {clinic.phone && (
-                        <span className="inline-flex items-center gap-2">
-                          <Phone className="h-4 w-4 shrink-0 stroke-[2] text-teal-600" aria-hidden />
-                          {clinic.phone}
-                        </span>
-                      )}
-                      {clinic.phone && clinic.email && (
-                        <span className="text-slate-400" aria-hidden>
-                          ·
-                        </span>
-                      )}
-                      {clinic.email && (
-                        <span className="inline-flex items-center gap-2">
-                          <Mail className="h-4 w-4 shrink-0 stroke-[2] text-teal-600" aria-hidden />
-                          {clinic.email}
-                        </span>
-                      )}
-                    </p>
-                  )}
-                </div>
-              </section>
-            )}
-        </header>
+      {contactColumns.length > 0 && (
+        <section className="w-full border-b border-slate-100 bg-white">
+          <div className="flex w-full flex-col items-stretch px-3 sm:flex-row sm:items-center sm:px-4 print:px-3">
+            {contactColumns.map((col, index) => (
+              <Fragment key={col.key}>
+                {index > 0 && (
+                  <>
+                    <div
+                      className="mx-4 h-px shrink-0 sm:hidden"
+                      style={{ backgroundColor: INVOICE_CONTACT.divider }}
+                      aria-hidden
+                    />
+                    <div className="hidden sm:contents">
+                      <InvoiceContactDivider />
+                    </div>
+                  </>
+                )}
+                <InvoiceContactColumn icon={col.icon} label={col.label} value={col.value} />
+              </Fragment>
+            ))}
+          </div>
+          {clinic.gstin && (
+            <p
+              className="px-4 py-2 text-xs font-normal text-slate-600 sm:px-5"
+              style={{ borderTop: `1px solid ${INVOICE_CONTACT.divider}` }}
+            >
+              GSTIN {clinic.gstin}
+            </p>
+          )}
+        </section>
+      )}
 
+      <div className="relative px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-5 md:px-10 md:pb-10 print:p-8">
         {/* Doctor + Patient */}
         <div className="mb-8 grid gap-5 md:grid-cols-2">
           <section className="rounded-2xl border border-slate-200/90 bg-slate-50/40 p-5 shadow-sm">
@@ -168,11 +207,7 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
                 <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Phone</p>
                 <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-slate-600">
                   <span>{invoice.patient_phone || '—'}</span>
-                  {(visitDate || visitTime) && (
-                    <span>
-                      Visit {[visitDate, visitTime].filter(Boolean).join(' · ')}
-                    </span>
-                  )}
+                  {visitDate && <span>{visitDate}</span>}
                 </p>
               </div>
             </div>
@@ -215,9 +250,11 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
         {/* Payment summary */}
         <div className="mb-8 grid gap-6 md:grid-cols-2">
           <section className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <Wallet className="h-5 w-5 text-teal-700" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600">Payment</h2>
+            <div className="mb-4 flex flex-wrap items-center gap-2.5">
+              <Wallet className="h-5 w-5 shrink-0 text-teal-700" />
+              <span className="text-xs font-bold uppercase leading-none tracking-wider text-slate-600">
+                Payment
+              </span>
               <PaymentStatusPill status={invoice.payment_status} />
             </div>
             <div className="space-y-3 text-sm">

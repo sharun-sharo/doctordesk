@@ -60,3 +60,16 @@ export function patientAge(dob) {
 export function formatMoney(n) {
   return `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+/** Invoice appointment date as DD/MM/YYYY (date-only, no time). */
+export function formatInvoiceDateDMY(dateInput) {
+  if (!dateInput) return '';
+  const iso = String(dateInput).slice(0, 10);
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${d.getFullYear()}`;
+}

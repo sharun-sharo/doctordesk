@@ -207,7 +207,7 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
                 <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Phone</p>
                 <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-slate-600">
                   <span>{invoice.patient_phone || '—'}</span>
-                  {visitDate && <span>{visitDate}</span>}
+                  {visitDate && <span>Visited on: {visitDate}</span>}
                 </p>
               </div>
             </div>

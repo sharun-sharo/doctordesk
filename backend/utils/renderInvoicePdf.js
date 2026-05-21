@@ -418,7 +418,7 @@ async function renderInvoicePdf(
     const patientAg = patientAgeGender(data);
     const visitDate = formatInvoiceDateDMY(data.appointment_date);
     const phonePart = data.patient_phone ? `Phone  ${data.patient_phone}` : 'Phone  —';
-    const patientContactLine = visitDate ? `${phonePart}   ${visitDate}` : phonePart;
+    const patientContactLine = visitDate ? `${phonePart}   Visited on: ${visitDate}` : phonePart;
     const patientLines = [patientContactLine];
     if (data.patient_address) patientLines.push(`Address  ${data.patient_address}`);
 

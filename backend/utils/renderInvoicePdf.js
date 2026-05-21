@@ -99,20 +99,25 @@ function measureContactRow(doc, phone, email, maxW) {
   return pdfTextBlockHeight(doc, fallback, maxW, PDF_TYPE.contact);
 }
 
-/** Full-width invoice header banner; aspect ratio preserved. */
-const HEADER_MAX_WIDTH_RATIO = 1;
-const HEADER_MAX_HEIGHT_PT = 110;
+/** Edge-to-edge header: full page width, height capped, image covers the band (like CSS object-cover). */
+const HEADER_BAND_HEIGHT_PT = 130;
 
-function drawInvoiceHeader(doc, imagePath, startY, contentLeft, contentWidth) {
-  const maxW = contentWidth * HEADER_MAX_WIDTH_RATIO;
-  const maxH = HEADER_MAX_HEIGHT_PT;
+function drawInvoiceHeader(doc, imagePath, startY) {
+  const boxW = PDF_WIDTH;
+  const boxH = HEADER_BAND_HEIGHT_PT;
   const img = doc.openImage(imagePath);
-  const scale = Math.min(maxW / img.width, maxH / img.height);
-  const w = img.width * scale;
-  const h = img.height * scale;
-  const x = contentLeft + (contentWidth - w) / 2;
-  doc.image(imagePath, x, startY, { width: w, height: h });
-  return h + 8;
+  const scale = Math.max(boxW / img.width, boxH / img.height);
+  const drawW = img.width * scale;
+  const drawH = img.height * scale;
+  const x = (boxW - drawW) / 2;
+  const y = startY + (boxH - drawH) / 2;
+
+  doc.save();
+  doc.rect(0, startY, boxW, boxH).clip();
+  doc.image(imagePath, x, y, { width: drawW, height: drawH });
+  doc.restore();
+
+  return boxH + 6;
 }
 
 function drawContactRow(doc, x, y, phone, email, maxW, color) {
@@ -177,8 +182,8 @@ async function renderInvoicePdf(
     // Accent top bar
     doc.rect(0, 0, PDF_WIDTH, 4).fill(PDF_THEME.accent);
 
-    // ----- Row 1: full-width invoice header image; row 2: clinic (left) + invoice (right) -----
-    const headerStartY = 8;
+    // ----- Row 1: edge-to-edge header; row 2: clinic (left) + invoice (right) with margins -----
+    const headerStartY = 4;
     let y = headerStartY;
     const headerGap = 12;
     const rowGap = 10;
@@ -188,14 +193,14 @@ async function renderInvoicePdf(
     let headerBlockH = 0;
     if (headerImagePath) {
       try {
-        headerBlockH = drawInvoiceHeader(doc, headerImagePath, headerStartY, left, PDF_CONTENT);
+        headerBlockH = drawInvoiceHeader(doc, headerImagePath, headerStartY);
       } catch (_) {
         /* fall through to clinic name */
       }
     }
     if (!headerBlockH && clinicName) {
       pdfFont(doc, PDF_TYPE.title + 2, PDF_THEME.primary, true);
-      doc.text(clinicName, left, headerStartY, { width: PDF_CONTENT, align: 'center' });
+      doc.text(clinicName, left, headerStartY + 8, { width: PDF_CONTENT, align: 'center' });
       headerBlockH = pdfTextBlockHeight(doc, clinicName, PDF_CONTENT, PDF_TYPE.title + 2) + 10;
     }
 

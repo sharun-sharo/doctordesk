@@ -69,6 +69,21 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
       {/* Gradient accent */}
       <div className="h-1 bg-gradient-to-r from-teal-600 via-teal-500 to-slate-800" aria-hidden />
 
+      {/* Row 1: edge-to-edge header (no side padding) */}
+      {headerSrc ? (
+        <div className="w-full overflow-hidden bg-white">
+          <img
+            src={headerSrc}
+            alt=""
+            className="block h-auto max-h-48 w-full object-cover object-center sm:max-h-52 print:max-h-48"
+          />
+        </div>
+      ) : (
+        <p className="bg-white px-6 py-4 text-center text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+          {clinic.name || 'Clinic'}
+        </p>
+      )}
+
       {/* Watermark */}
       <div
         className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.03]"
@@ -78,21 +93,7 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
       </div>
 
       <div className="relative px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-5 md:px-10 md:pb-10 print:p-8">
-        {/* Row 1: full-width invoice header; row 2: clinic (left) + invoice (right) */}
         <header className="mb-6 space-y-4 border-b border-slate-100 pb-6">
-          <div className="w-full overflow-hidden rounded-lg bg-white">
-            {headerSrc ? (
-              <img
-                src={headerSrc}
-                alt=""
-                className="h-auto max-h-40 w-full object-contain object-center sm:max-h-44 print:max-h-40"
-              />
-            ) : (
-              <p className="py-4 text-center text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-                {clinic.name || 'Clinic'}
-              </p>
-            )}
-          </div>
           <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-stretch">
             {(clinic.address || clinic.phone || clinic.email) && (
               <section className="min-w-0 rounded-xl border border-teal-100/80 border-l-4 border-l-teal-600 bg-gradient-to-br from-teal-50/80 to-slate-50/50 px-4 py-3 shadow-sm">

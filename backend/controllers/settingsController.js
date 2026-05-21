@@ -18,7 +18,9 @@ function getExtFromMime(mime) {
 }
 
 function getCanonicalLogoFilename(userId, ext) {
-  const safeExt = ['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(String(ext || '').toLowerCase())
+  const safeExt = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.heif'].includes(
+    String(ext || '').toLowerCase()
+  )
     ? String(ext).toLowerCase()
     : '.png';
   return userId != null ? `logo-user-${userId}${safeExt}` : `logo${safeExt}`;

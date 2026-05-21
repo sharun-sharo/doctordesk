@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import { Plus, Download, Trash2, Upload, Image } from 'lucide-react';
 import DataTable from '../components/ui/DataTable';
 import { logoImageSrc } from '../utils/logoImageSrc';
+import { isAcceptableInvoiceHeaderFile, prepareInvoiceHeaderFile } from '../utils/invoiceHeaderFile';
+import { uploadErrorMessage } from '../utils/uploadErrorMessage';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 const API_ORIGIN = API_BASE.startsWith('http') ? API_BASE.replace(/\/api\/v1\/?$/, '') : '';
@@ -106,29 +108,42 @@ export default function Invoices() {
 
   const [headerBuster, setHeaderBuster] = useState(Date.now());
 
-  const handleHeaderUpload = (e) => {
+  const handleHeaderUpload = async (e) => {
     const file = e.target?.files?.[0];
-    if (!file || !file.type.startsWith('image/')) {
-      toast.error('Please select an image (PNG, JPG, etc.)');
+    if (!file) return;
+    if (!isAcceptableInvoiceHeaderFile(file)) {
+      toast.error('Please choose a photo or image (JPG, PNG, etc.)');
       return;
     }
+
     setHeaderUploading(true);
-    const formData = new FormData();
-    formData.append('logo', file);
-    api
-      .post('/settings/header', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-      .then(({ data }) => {
-        const bust = Date.now();
-        const newUrl = data.data?.headerUrl ?? data.data?.logoUrl ?? data.headerUrl ?? data.logoUrl ?? null;
-        setSettings((s) => ({ ...s, headerUrl: newUrl }));
-        setHeaderBuster(bust);
-        toast.success('Invoice header updated. It will appear on downloaded PDFs.');
-      })
-      .catch(() => toast.error('Failed to upload invoice header'))
-      .finally(() => {
-        setHeaderUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      });
+    try {
+      let uploadFile = file;
+      try {
+        uploadFile = await prepareInvoiceHeaderFile(file);
+      } catch {
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error('Image is too large (max 5 MB). Try a smaller photo.');
+          return;
+        }
+        uploadFile = file;
+      }
+
+      const formData = new FormData();
+      formData.append('logo', uploadFile, uploadFile.name || 'invoice-header.jpg');
+
+      const { data } = await api.post('/settings/header', formData);
+      const bust = Date.now();
+      const newUrl = data.data?.headerUrl ?? data.data?.logoUrl ?? data.headerUrl ?? data.logoUrl ?? null;
+      setSettings((s) => ({ ...s, headerUrl: newUrl }));
+      setHeaderBuster(bust);
+      toast.success('Invoice header updated. It will appear on downloaded PDFs.');
+    } catch (err) {
+      toast.error(uploadErrorMessage(err, 'Failed to upload invoice header'));
+    } finally {
+      setHeaderUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const headerSrc = logoImageSrc(settings.headerUrl, API_ORIGIN || window.location.origin, headerBuster);
@@ -224,7 +239,7 @@ export default function Invoices() {
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-700 mb-1">Invoice header</h3>
           <p className="text-body text-slate-500 mb-3">
-            Wide banner shown at the top of PDF invoices (e.g. clinic name and branding). JPEG, PNG, WebP or GIF, max 2MB.
+            Wide banner shown at the top of PDF invoices (e.g. clinic name and branding). JPG, PNG, WebP or GIF, max 5 MB. Photos from your phone are resized automatically.
           </p>
           <div className="space-y-3">
             <div className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -232,7 +247,7 @@ export default function Invoices() {
                 <img
                   src={headerSrc}
                   alt="Invoice header preview"
-                  className="h-auto max-h-44 w-full object-contain object-center sm:max-h-48"
+                  className="block h-auto max-h-48 w-full object-cover object-center sm:max-h-52"
                 />
               ) : (
                 <div className="flex h-28 flex-col items-center justify-center gap-2 bg-slate-50 text-slate-400 sm:h-32">
@@ -244,7 +259,7 @@ export default function Invoices() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+              accept="image/*"
               className="hidden"
               onChange={handleHeaderUpload}
             />

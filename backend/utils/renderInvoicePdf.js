@@ -98,6 +98,19 @@ function measureContactRow(doc, phone, email, maxW) {
   return pdfTextBlockHeight(doc, fallback, maxW, PDF_TYPE.contact);
 }
 
+/** Draw logo centered on row 1; scale to max width while preserving aspect ratio. */
+function drawCenteredLogo(doc, logoPath, startY, contentLeft, contentWidth) {
+  const maxW = contentWidth * 0.78;
+  const maxH = 96;
+  const img = doc.openImage(logoPath);
+  const scale = Math.min(maxW / img.width, maxH / img.height);
+  const w = img.width * scale;
+  const h = img.height * scale;
+  const x = contentLeft + (contentWidth - w) / 2;
+  doc.image(logoPath, x, startY, { width: w, height: h });
+  return h;
+}
+
 function drawContactRow(doc, x, y, phone, email, maxW, color) {
   pdfFont(doc, PDF_TYPE.contact, PDF_THEME.primary, true);
   let cx = x;
@@ -157,16 +170,12 @@ async function renderInvoicePdf(doc, { data, items, business = {}, logoPath = nu
     const rowGap = 10;
     const metaBoxW = 188;
     const metaBoxX = right - metaBoxW;
-    const logoW = 160;
-    const logoH = 56;
-    const logoX = left + (PDF_CONTENT - logoW) / 2;
     const logoY = headerStartY;
 
     let logoBlockH = 0;
     if (logoPath) {
       try {
-        doc.image(logoPath, logoX, logoY, { width: logoW, height: logoH, fit: [logoW, logoH] });
-        logoBlockH = logoH;
+        logoBlockH = drawCenteredLogo(doc, logoPath, logoY, left, PDF_CONTENT);
       } catch (_) {
         /* fall through to clinic name */
       }

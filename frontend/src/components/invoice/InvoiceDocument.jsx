@@ -85,7 +85,7 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
               <img
                 src={logoSrc}
                 alt=""
-                className="h-14 max-w-[200px] object-contain sm:h-16"
+                className="mx-auto h-auto max-h-24 w-auto max-w-[min(100%,22rem)] object-contain sm:max-h-28 sm:max-w-[26rem]"
               />
             ) : (
               <p className="text-center text-lg font-bold tracking-tight text-slate-900 sm:text-xl">

@@ -61,30 +61,55 @@ function formatMoney(n) {
   return `${CURRENCY}${Number(n || 0).toFixed(2)}`;
 }
 
-function formatInvoiceDate(d) {
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-const PDF_ICON = 9;
-const PDF_ICON_GAP = 5;
+const PDF_ICON = 10;
+const PDF_ICON_GAP = 6;
 const PDF_CONTACT_ITEM_GAP = 12;
 
-function drawPdfPhoneIcon(doc, x, y, color) {
-  const s = PDF_ICON;
+function pdfIconStyle(doc, color) {
   doc.save();
-  doc.strokeColor(color).lineWidth(0.85).lineCap('round').lineJoin('round');
-  doc.roundedRect(x, y + 0.5, s * 0.52, s, 1).stroke();
-  doc.circle(x + s * 0.26, y + s * 0.78, 0.55).stroke();
+  doc.strokeColor(color).fillColor(color);
+  doc.lineWidth(1.05).lineCap('round').lineJoin('round');
+}
+
+/** Lucide-style map pin */
+function drawPdfMapPinIcon(doc, x, y, color) {
+  pdfIconStyle(doc, color);
+  const cx = x + PDF_ICON / 2;
+  doc.circle(cx, y + 2.6, 2.3).stroke();
+  doc.moveTo(cx - 2.1, y + 4.4).lineTo(cx, y + 9.4).lineTo(cx + 2.1, y + 4.4).stroke();
+  doc.circle(cx, y + 2.6, 0.9).fill();
   doc.restore();
 }
 
-function drawPdfMailIcon(doc, x, y, color) {
-  const s = PDF_ICON;
-  doc.save();
-  doc.strokeColor(color).lineWidth(0.85).lineCap('round').lineJoin('round');
-  doc.rect(x, y + 1.5, s, s * 0.62).stroke();
-  doc.moveTo(x, y + 1.5).lineTo(x + s / 2, y + 1.5 + s * 0.38).lineTo(x + s, y + 1.5).stroke();
+/** Lucide-style smartphone */
+function drawPdfPhoneIcon(doc, x, y, color) {
+  pdfIconStyle(doc, color);
+  doc.roundedRect(x + 1.8, y + 0.6, 6.4, 8.8, 1.3).stroke();
+  doc.roundedRect(x + 4.2, y + 1.4, 1.6, 0.9, 0.3).stroke();
+  doc.circle(x + PDF_ICON / 2, y + 7.6, 0.65).stroke();
   doc.restore();
+}
+
+/** Lucide-style mail envelope */
+function drawPdfMailIcon(doc, x, y, color) {
+  pdfIconStyle(doc, color);
+  doc.rect(x + 1.2, y + 2.4, 7.6, 5.4).stroke();
+  doc.moveTo(x + 1.2, y + 2.4).lineTo(x + PDF_ICON / 2, y + 6.1).lineTo(x + 8.8, y + 2.4).stroke();
+  doc.restore();
+}
+
+function measureAddressRow(doc, address, maxW) {
+  const textW = Math.max(40, maxW - PDF_ICON - PDF_ICON_GAP);
+  pdfFont(doc, PDF_TYPE.contact, PDF_THEME.body);
+  return Math.max(PDF_TYPE.contact + 4, pdfTextBlockHeight(doc, address, textW, PDF_TYPE.contact));
+}
+
+function drawAddressRow(doc, x, cy, address, maxW, color) {
+  drawPdfMapPinIcon(doc, x, cy + 0.5, color);
+  pdfFont(doc, PDF_TYPE.contact, PDF_THEME.body);
+  const textW = Math.max(40, maxW - PDF_ICON - PDF_ICON_GAP);
+  doc.text(address, x + PDF_ICON + PDF_ICON_GAP, cy, { width: textW, lineGap: 2 });
+  return measureAddressRow(doc, address, maxW);
 }
 
 function measureContactRow(doc, phone, email, maxW) {
@@ -142,6 +167,18 @@ function drawContactRow(doc, x, y, phone, email, maxW, color) {
   return measureContactRow(doc, phone, email, maxW);
 }
 
+function formatVisitLine(data) {
+  if (!data.appointment_date && !data.start_time) return '';
+  const apptDate = data.appointment_date
+    ? new Date(data.appointment_date).toLocaleDateString('en-IN', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+      })
+    : '';
+  return [apptDate, formatTime(data.start_time)].filter(Boolean).join(' · ');
+}
+
 function patientAgeGender(data) {
   const parts = [];
   if (data.patient_dob) {
@@ -185,10 +222,7 @@ async function renderInvoicePdf(
     // ----- Row 1: edge-to-edge header; row 2: clinic (left) + invoice (right) with margins -----
     const headerStartY = 4;
     let y = headerStartY;
-    const headerGap = 12;
     const rowGap = 10;
-    const metaBoxW = 188;
-    const metaBoxX = right - metaBoxW;
 
     let headerBlockH = 0;
     if (headerImagePath) {
@@ -206,7 +240,7 @@ async function renderInvoicePdf(
 
     const row2Y = headerStartY + headerBlockH + rowGap;
     const clinicBoxX = left;
-    const clinicBoxW = Math.max(200, metaBoxX - clinicBoxX - headerGap);
+    const clinicBoxW = PDF_CONTENT;
 
     const contactPhone = business.phone || '';
     const contactEmail = business.email || '';
@@ -220,11 +254,8 @@ async function renderInvoicePdf(
       const hasContactRow = contactPhone || contactEmail;
 
       let contentH = 0;
-      pdfFont(doc, PDF_TYPE.section, PDF_THEME.accent, true);
-      contentH += pdfTextBlockHeight(doc, 'CLINIC DETAILS', textW, PDF_TYPE.section) + lineGap;
       if (business.address) {
-        pdfFont(doc, PDF_TYPE.contact, PDF_THEME.body);
-        contentH += pdfTextBlockHeight(doc, business.address, textW, PDF_TYPE.contact) + lineGap;
+        contentH += measureAddressRow(doc, business.address, textW) + lineGap;
       }
       if (hasContactRow) {
         contentH += measureContactRow(doc, contactPhone, contactEmail, textW);
@@ -243,14 +274,10 @@ async function renderInvoicePdf(
       doc.rect(clinicBoxX, row2Y, 4, clinicBoxH).fill(PDF_THEME.accent);
 
       let cy = row2Y + boxPad;
-      pdfFont(doc, PDF_TYPE.section, PDF_THEME.accent, true);
-      doc.text('CLINIC DETAILS', clinicBoxX + boxPad + 4, cy, { width: textW });
-      cy += pdfTextBlockHeight(doc, 'CLINIC DETAILS', textW, PDF_TYPE.section) + lineGap;
 
       if (business.address) {
-        pdfFont(doc, PDF_TYPE.contact, PDF_THEME.body);
-        doc.text(business.address, clinicBoxX + boxPad + 4, cy, { width: textW, lineGap: 2 });
-        cy += pdfTextBlockHeight(doc, business.address, textW, PDF_TYPE.contact) + lineGap;
+        cy += drawAddressRow(doc, clinicBoxX + boxPad + 4, cy, business.address, textW, PDF_THEME.body);
+        cy += lineGap;
       }
       if (hasContactRow) {
         cy += drawContactRow(
@@ -270,28 +297,7 @@ async function renderInvoicePdf(
       }
     }
 
-    const metaH = 72;
-    doc.roundedRect(metaBoxX, row2Y, metaBoxW, metaH, 4).fillAndStroke(PDF_THEME.surface, PDF_THEME.border);
-    doc.rect(metaBoxX, row2Y, metaBoxW, 3).fill(PDF_THEME.accent);
-    pdfFont(doc, PDF_TYPE.section, PDF_THEME.accent, true);
-    doc.text('INVOICE', metaBoxX + 12, row2Y + 10);
-    pdfFont(doc, PDF_TYPE.body, PDF_THEME.primary, true);
-    doc.text(data.invoice_number, metaBoxX + 12, row2Y + 24, { width: metaBoxW - 24 });
-    pdfFont(doc, PDF_TYPE.bodySm, PDF_THEME.secondary);
-    doc.text(`Date  ${formatInvoiceDate(data.created_at)}`, metaBoxX + 12, row2Y + 42);
-    if (data.appointment_date || data.start_time) {
-      const apptDate = data.appointment_date
-        ? new Date(data.appointment_date).toLocaleDateString('en-IN', {
-            weekday: 'short',
-            day: 'numeric',
-            month: 'short',
-          })
-        : '';
-      const apptLine = [apptDate, formatTime(data.start_time)].filter(Boolean).join(' · ');
-      doc.text(`Visit  ${apptLine}`, metaBoxX + 12, row2Y + 56, { width: metaBoxW - 24 });
-    }
-
-    y = row2Y + Math.max(clinicBoxH, metaH) + 12;
+    y = row2Y + clinicBoxH + 12;
 
     doc.moveTo(left, y).lineTo(right, y).strokeColor(PDF_THEME.border).lineWidth(0.75).stroke();
     y += 14;
@@ -373,12 +379,14 @@ async function renderInvoicePdf(
     };
 
     const patientAg = patientAgeGender(data);
-    const patientLines = [
-      data.patient_phone ? `Phone  ${data.patient_phone}` : 'Phone  —',
-    ];
+    const visitLine = formatVisitLine(data);
+    const phonePart = data.patient_phone ? `Phone  ${data.patient_phone}` : 'Phone  —';
+    const patientContactLine = visitLine ? `${phonePart}   Visit  ${visitLine}` : phonePart;
+    const patientLines = [patientContactLine];
     if (data.patient_address) patientLines.push(`Address  ${data.patient_address}`);
 
-    const doctorLines = [doctorPhone ? `Phone  ${doctorPhone}` : 'Phone  —'];
+    const doctorPhonePart = doctorPhone ? `Phone  ${doctorPhone}` : 'Phone  —';
+    const doctorLines = [`${doctorPhonePart}   ${data.invoice_number || '—'}`];
     const doctorPanelH = measurePartyPanel('Consulting Doctor', doctorName, doctorLines);
     const patientPanelH = measurePartyPanel('BILLED TO', data.patient_name || '—', patientLines, patientAg);
     drawPartyPanel(left, 'Consulting Doctor', doctorName, doctorLines, doctorPanelH);

@@ -1,4 +1,4 @@
-import { FileText, Mail, Phone, Stethoscope, User, Wallet } from 'lucide-react';
+import { FileText, Mail, MapPin, Phone, Stethoscope, User, Wallet } from 'lucide-react';
 import { amountInWords, formatMoney, patientAge } from '../../utils/amountInWords';
 
 function DetailRow({ icon: Icon, label, value }) {
@@ -94,21 +94,20 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
 
       <div className="relative px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-5 md:px-10 md:pb-10 print:p-8">
         <header className="mb-6 space-y-4 border-b border-slate-100 pb-6">
-          <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-stretch">
-            {(clinic.address || clinic.phone || clinic.email) && (
-              <section className="min-w-0 rounded-xl border border-teal-100/80 border-l-4 border-l-teal-600 bg-gradient-to-br from-teal-50/80 to-slate-50/50 px-4 py-3 shadow-sm">
-                <h2 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-teal-800">
-                  Clinic details
-                </h2>
+          {(clinic.address || clinic.phone || clinic.email) && (
+              <section className="w-full rounded-xl border border-teal-100/80 border-l-4 border-l-teal-600 bg-gradient-to-br from-teal-50/80 to-slate-50/50 px-4 py-3 shadow-sm">
                 <div className="space-y-1.5 text-sm">
                   {clinic.address && (
-                    <p className="leading-snug text-slate-700">{clinic.address}</p>
+                    <p className="inline-flex items-start gap-2 leading-snug text-slate-700">
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 stroke-[2] text-teal-600" aria-hidden />
+                      <span>{clinic.address}</span>
+                    </p>
                   )}
                   {(clinic.phone || clinic.email) && (
                     <p className="flex flex-wrap items-center gap-x-3 gap-y-1 font-medium text-slate-800">
                       {clinic.phone && (
-                        <span className="inline-flex items-center gap-1.5">
-                          <Phone className="h-3.5 w-3.5 shrink-0 text-teal-700" aria-hidden />
+                        <span className="inline-flex items-center gap-2">
+                          <Phone className="h-4 w-4 shrink-0 stroke-[2] text-teal-600" aria-hidden />
                           {clinic.phone}
                         </span>
                       )}
@@ -118,8 +117,8 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
                         </span>
                       )}
                       {clinic.email && (
-                        <span className="inline-flex items-center gap-1.5">
-                          <Mail className="h-3.5 w-3.5 shrink-0 text-teal-700" aria-hidden />
+                        <span className="inline-flex items-center gap-2">
+                          <Mail className="h-4 w-4 shrink-0 stroke-[2] text-teal-600" aria-hidden />
                           {clinic.email}
                         </span>
                       )}
@@ -128,27 +127,6 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
                 </div>
               </section>
             )}
-            <section className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 shadow-sm md:w-[188px]">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700">Invoice</span>
-                <PaymentStatusPill status={invoice.payment_status} />
-              </div>
-              <p className="font-mono text-sm font-bold text-slate-900">{invoice.invoice_number}</p>
-              <div className="mt-2 space-y-0.5 text-xs text-slate-600">
-                <p>
-                  Date{' '}
-                  {new Date(invoice.created_at).toLocaleDateString('en-IN', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </p>
-                {(visitDate || visitTime) && (
-                  <p>Visit {[visitDate, visitTime].filter(Boolean).join(' · ')}</p>
-                )}
-              </div>
-            </section>
-          </div>
         </header>
 
         {/* Doctor + Patient */}
@@ -160,7 +138,13 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
             </div>
             <div className="space-y-4">
               <DetailRow icon={User} label="Name" value={invoice.doctor_name || '—'} />
-              <DetailRow icon={Phone} label="Contact" value={invoice.doctor_phone || '—'} />
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Contact</p>
+                <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-slate-600">
+                  <span>{invoice.doctor_phone || '—'}</span>
+                  <span className="font-mono font-semibold text-slate-900">{invoice.invoice_number}</span>
+                </p>
+              </div>
             </div>
           </section>
           <section className="rounded-2xl border border-slate-200/90 bg-slate-50/40 p-5 shadow-sm">
@@ -180,7 +164,17 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
                   )}
                 </p>
               </div>
-              <DetailRow icon={Phone} label="Phone" value={invoice.patient_phone || '—'} />
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Phone</p>
+                <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-slate-600">
+                  <span>{invoice.patient_phone || '—'}</span>
+                  {(visitDate || visitTime) && (
+                    <span>
+                      Visit {[visitDate, visitTime].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
+                </p>
+              </div>
             </div>
           </section>
         </div>

@@ -224,11 +224,11 @@ export default function Invoices() {
           <p className="text-body text-slate-500 mb-3">This logo appears on downloaded PDF invoices. JPEG, PNG, WebP or GIF, max 2MB.</p>
           <div className="flex flex-wrap items-center gap-4">
             {logoSrc ? (
-              <div className="flex h-24 min-w-[12rem] max-w-[22rem] flex-1 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 sm:h-28 sm:max-w-[26rem]">
-                <img src={logoSrc} alt="Clinic logo" className="h-auto max-h-full w-full max-w-full object-contain" />
+              <div className="flex h-28 min-w-[14rem] max-w-[32rem] flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white px-5 py-3 sm:h-32 sm:max-w-[36rem]">
+                <img src={logoSrc} alt="Clinic logo" className="h-auto max-h-full w-full max-w-full object-contain object-center" />
               </div>
             ) : (
-              <div className="flex h-24 w-48 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-slate-400 sm:h-28">
+              <div className="flex h-28 w-52 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-slate-400 sm:h-32">
                 <Image className="h-8 w-8" />
               </div>
             )}

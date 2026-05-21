@@ -77,18 +77,18 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
         <Stethoscope className="h-[280px] w-[280px] text-teal-900" strokeWidth={0.5} />
       </div>
 
-      <div className="relative p-6 sm:p-8 md:p-10 print:p-8">
+      <div className="relative px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-5 md:px-10 md:pb-10 print:p-8">
         {/* Header row 1: logo centered; row 2: clinic (left) + invoice (right) */}
-        <header className="mb-8 space-y-4 border-b border-slate-100 pb-8">
-          <div className="flex justify-center">
+        <header className="mb-6 space-y-4 border-b border-slate-100 pb-6">
+          <div className="flex justify-center px-2 py-2 sm:px-6 sm:py-3">
             {logoSrc ? (
               <img
                 src={logoSrc}
                 alt=""
-                className="mx-auto h-auto max-h-24 w-auto max-w-[min(100%,22rem)] object-contain sm:max-h-28 sm:max-w-[26rem]"
+                className="mx-auto h-auto w-full max-h-32 max-w-[min(94%,32rem)] object-contain object-center sm:max-h-36 sm:max-w-[36rem] print:max-h-32"
               />
             ) : (
-              <p className="text-center text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
+              <p className="text-center text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
                 {clinic.name || 'Clinic'}
               </p>
             )}

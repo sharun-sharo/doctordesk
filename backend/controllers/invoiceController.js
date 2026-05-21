@@ -5,7 +5,7 @@ const PDFDocument = require('pdfkit');
 const { ROLES } = require('../config/roles');
 const { getClinicLogoPath, getClinicBusinessSettings } = require('./settingsController');
 const { resolveDoctorIdForBooking } = require('../utils/resolveDoctorId');
-const { renderInvoicePdf, PDF_MARGIN } = require('../utils/renderInvoicePdf');
+const { renderInvoicePdf, PDF_MARGIN, PDF_MARGIN_TOP } = require('../utils/renderInvoicePdf');
 let invoiceSchemaEnsured = false;
 
 async function ensureInvoiceSchema() {
@@ -349,7 +349,11 @@ async function downloadPdf(req, res, next) {
       [req.params.id]
     );
     const data = inv[0];
-    const doc = new PDFDocument({ size: 'A4', margin: PDF_MARGIN, bufferPages: true });
+    const doc = new PDFDocument({
+      size: 'A4',
+      margins: { top: PDF_MARGIN_TOP, bottom: PDF_MARGIN, left: PDF_MARGIN, right: PDF_MARGIN },
+      bufferPages: true,
+    });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',

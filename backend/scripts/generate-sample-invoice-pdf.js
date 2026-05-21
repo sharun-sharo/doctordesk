@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
-const { renderInvoicePdf } = require('../utils/renderInvoicePdf');
+const { renderInvoicePdf, PDF_MARGIN, PDF_MARGIN_TOP } = require('../utils/renderInvoicePdf');
 
 const outPath = path.resolve(__dirname, '../../frontend/public/sample-invoice.pdf');
 
@@ -62,7 +62,11 @@ function findSampleLogoPath() {
 
 async function main() {
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  const doc = new PDFDocument({ size: 'A4', margin: 48, bufferPages: true });
+  const doc = new PDFDocument({
+    size: 'A4',
+    margins: { top: PDF_MARGIN_TOP, bottom: PDF_MARGIN, left: PDF_MARGIN, right: PDF_MARGIN },
+    bufferPages: true,
+  });
   const stream = fs.createWriteStream(outPath);
   doc.pipe(stream);
 

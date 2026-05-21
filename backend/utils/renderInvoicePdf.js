@@ -1,7 +1,8 @@
 const { amountInWords } = require('./amountInWords');
 
-// A4: 595.28 x 841.89 pt. Margins 50; content width 495.
+// A4: 595.28 x 841.89 pt.
 const PDF_MARGIN = 48;
+const PDF_MARGIN_TOP = 10;
 const PDF_WIDTH = 595.28;
 const PDF_HEIGHT = 841.89;
 const PDF_CONTENT = PDF_WIDTH - PDF_MARGIN * 2;
@@ -98,17 +99,20 @@ function measureContactRow(doc, phone, email, maxW) {
   return pdfTextBlockHeight(doc, fallback, maxW, PDF_TYPE.contact);
 }
 
-/** Draw logo centered on row 1; scale to max width while preserving aspect ratio. */
+/** Premium header logo: ~42% larger than prior layout, aspect ratio preserved. */
+const LOGO_MAX_WIDTH_RATIO = 0.9;
+const LOGO_MAX_HEIGHT_PT = 118;
+
 function drawCenteredLogo(doc, logoPath, startY, contentLeft, contentWidth) {
-  const maxW = contentWidth * 0.78;
-  const maxH = 96;
+  const maxW = contentWidth * LOGO_MAX_WIDTH_RATIO;
+  const maxH = LOGO_MAX_HEIGHT_PT;
   const img = doc.openImage(logoPath);
   const scale = Math.min(maxW / img.width, maxH / img.height);
   const w = img.width * scale;
   const h = img.height * scale;
   const x = contentLeft + (contentWidth - w) / 2;
   doc.image(logoPath, x, startY, { width: w, height: h });
-  return h;
+  return h + 6;
 }
 
 function drawContactRow(doc, x, y, phone, email, maxW, color) {
@@ -162,10 +166,9 @@ async function renderInvoicePdf(doc, { data, items, business = {}, logoPath = nu
     // Accent top bar
     doc.rect(0, 0, PDF_WIDTH, 4).fill(PDF_THEME.accent);
 
-    let y = PDF_MARGIN;
-
     // ----- Header row 1: logo centered; row 2: clinic (left) + invoice (right) -----
-    const headerStartY = y;
+    const headerStartY = 8;
+    let y = headerStartY;
     const headerGap = 12;
     const rowGap = 10;
     const metaBoxW = 188;
@@ -181,9 +184,9 @@ async function renderInvoicePdf(doc, { data, items, business = {}, logoPath = nu
       }
     }
     if (!logoBlockH && clinicName) {
-      pdfFont(doc, PDF_TYPE.title, PDF_THEME.primary, true);
+      pdfFont(doc, PDF_TYPE.title + 2, PDF_THEME.primary, true);
       doc.text(clinicName, left, logoY, { width: PDF_CONTENT, align: 'center' });
-      logoBlockH = pdfTextBlockHeight(doc, clinicName, PDF_CONTENT, PDF_TYPE.title) + 8;
+      logoBlockH = pdfTextBlockHeight(doc, clinicName, PDF_CONTENT, PDF_TYPE.title + 2) + 10;
     }
 
     const row2Y = headerStartY + logoBlockH + rowGap;
@@ -494,4 +497,10 @@ async function renderInvoicePdf(doc, { data, items, business = {}, logoPath = nu
 
 }
 
-module.exports = { renderInvoicePdf, PDF_MARGIN, PDF_WIDTH, PDF_CONTENT };
+module.exports = {
+  renderInvoicePdf,
+  PDF_MARGIN,
+  PDF_MARGIN_TOP,
+  PDF_WIDTH,
+  PDF_CONTENT,
+};

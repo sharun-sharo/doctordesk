@@ -215,15 +215,12 @@ export default function InvoiceDocument({ invoice, clinic = {}, className = '' }
         {/* Payment summary */}
         <div className="mb-8 grid gap-6 md:grid-cols-2">
           <section className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
+            <div className="mb-4 flex flex-wrap items-center gap-2">
               <Wallet className="h-5 w-5 text-teal-700" />
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600">Payment</h2>
+              <PaymentStatusPill status={invoice.payment_status} />
             </div>
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between text-slate-600">
-                <span>Status</span>
-                <PaymentStatusPill status={invoice.payment_status} />
-              </div>
               <div className="text-sm text-slate-600">
                 <span>Paid </span>
                 <span className="font-semibold text-slate-900">{formatMoney(invoice.paid_amount)}</span>

@@ -471,22 +471,21 @@ async function renderInvoicePdf(
     drawTotalRow('Amount due', formatMoney(data.total), true, true);
 
     const payY = totalsBoxTop + 12;
-    pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
-    doc.text('PAYMENT', left, payY);
     const badgeW = 58;
     const badgeH = 18;
     const badgeColor = isPaid ? PDF_THEME.paid : PDF_THEME.pending;
     const badgeBg = isPaid ? '#ecfdf5' : '#fffbeb';
-    doc.roundedRect(left, payY + 14, badgeW, badgeH, 3).fill(badgeBg);
+    const statusLabel = payStatus.charAt(0).toUpperCase() + payStatus.slice(1);
+
+    pdfFont(doc, PDF_TYPE.section, PDF_THEME.secondary, true);
+    doc.text('PAYMENT', left, payY, { lineBreak: false });
+    const badgeX = left + doc.widthOfString('PAYMENT') + 8;
+    doc.roundedRect(badgeX, payY - 3, badgeW, badgeH, 3).fill(badgeBg);
     pdfFont(doc, PDF_TYPE.bodySm, badgeColor, true);
-    doc.text(
-      payStatus.charAt(0).toUpperCase() + payStatus.slice(1),
-      left,
-      payY + 18,
-      { width: badgeW, align: 'center' }
-    );
+    doc.text(statusLabel, badgeX, payY + 1, { width: badgeW, align: 'center' });
+
     const amountWords = amountInWords(data.total);
-    const paidLineY = payY + 40;
+    const paidLineY = payY + 22;
     const paidLabel = `Paid  ${formatMoney(data.paid_amount)}`;
     pdfFont(doc, PDF_TYPE.body, PDF_THEME.body);
     doc.text(paidLabel, left, paidLineY, { lineBreak: false });

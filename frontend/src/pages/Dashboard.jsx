@@ -55,7 +55,7 @@ const RevenueTooltip = ({ active, payload, label }) => {
 };
 
 export default function Dashboard() {
-  const { user, isReceptionist, isAssistantDoctor, isSuperAdmin } = useAuth();
+  const { user, isReceptionist, isAssistantDoctor, isSuperAdmin, isAdmin } = useAuth();
   const isReceptionistOrAssistant = isReceptionist || isAssistantDoctor;
   const [stats, setStats] = useState(null);
   const [metrics, setMetrics] = useState(null);
@@ -68,6 +68,7 @@ export default function Dashboard() {
   const [allTotal, setAllTotal] = useState(0);
   const [allPage, setAllPage] = useState(1);
   const [allLoading, setAllLoading] = useState(false);
+  const [assistantRevenue, setAssistantRevenue] = useState(null);
 
   const ALL_PAGE_SIZE = 25;
 
@@ -112,15 +113,17 @@ export default function Dashboard() {
       api.get('/dashboard/stats'),
       isReceptionistOrAssistant ? Promise.resolve({ data: { data: null } }) : api.get('/dashboard/metrics'),
       isReceptionistOrAssistant ? Promise.resolve({ data: { data: [] } }) : api.get('/dashboard/revenue-chart?range=weekly'),
+      isAdmin ? api.get('/dashboard/assistant-doctor-revenue') : Promise.resolve({ data: { data: null } }),
       api.get('/dashboard/daily-appointment-distribution'),
       api.get('/appointments', { params: { limit: 50, page: 1, date_from: dateFrom } }),
       api.get('/appointments', { params: { limit: 1, page: 1 } }),
     ];
     Promise.all(requests)
-      .then(([s, m, r, d, a, allCountRes]) => {
+      .then(([s, m, r, ar, d, a, allCountRes]) => {
         setStats(s.data.data);
         setMetrics(m.data.data);
         setRevenueChart(r.data.data || []);
+        setAssistantRevenue(ar.data.data);
         setDailyAppointments(d.data.data || []);
         setRecentAppointments(a.data.data?.appointments || []);
         setAllTotal(allCountRes?.data?.data?.pagination?.total ?? 0);
@@ -129,7 +132,7 @@ export default function Dashboard() {
         console.error('Dashboard fetch error:', err);
       })
       .finally(() => setLoading(false));
-  }, [isReceptionistOrAssistant, isSuperAdmin]);
+  }, [isReceptionistOrAssistant, isSuperAdmin, isAdmin]);
 
   useEffect(() => {
     if (activeOverviewTab === 'all') fetchAllAppointments(allPage);
@@ -325,6 +328,64 @@ export default function Dashboard() {
             </p>
           </div>
         </div>
+
+        {isAdmin && assistantRevenue && (
+          <div className="mb-6 sm:mb-8 rounded-xl border border-slate-200 bg-slate-50/50 p-4 sm:p-5">
+            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h3 className="text-base font-semibold text-slate-800 sm:text-lg">Revenue by doctor</h3>
+                <p className="mt-1 text-sm text-slate-500">Your clinic total includes assistant doctors</p>
+              </div>
+              {assistantRevenue.assistantTotalThisMonth > 0 && (
+                <p className="text-sm text-slate-600">
+                  Assistants this month:{' '}
+                  <span className="font-semibold text-teal-700">
+                    ₹{assistantRevenue.assistantTotalThisMonth.toLocaleString('en-IN')}
+                  </span>
+                </p>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[320px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    <th className="pb-2 pr-4">Doctor</th>
+                    <th className="pb-2 pr-4 text-right">This month</th>
+                    <th className="pb-2 text-right">Year to date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(assistantRevenue.breakdown || []).map((row) => (
+                    <tr key={row.doctorId} className="border-b border-slate-100 last:border-0">
+                      <td className="py-2.5 pr-4 font-medium text-slate-800">
+                        {row.doctorName}
+                        {row.isAssistant ? (
+                          <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold uppercase text-sky-800">
+                            Assistant
+                          </span>
+                        ) : (
+                          <span className="ml-2 rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-bold uppercase text-teal-800">
+                            You
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums text-slate-800">
+                        ₹{row.revenueThisMonth.toLocaleString('en-IN')}
+                      </td>
+                      <td className="py-2.5 text-right tabular-nums text-slate-600">
+                        ₹{row.revenueYtd.toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!assistantRevenue.breakdown?.length && (
+              <p className="text-sm text-slate-500">No billed revenue yet for your team.</p>
+            )}
+          </div>
+        )}
+
         <div className="min-h-[280px] rounded-xl border border-slate-100 bg-gradient-to-b from-slate-50/60 to-white p-4 sm:p-5">
           {revenueChart.length ? (
             <ResponsiveContainer width="100%" height={280}>

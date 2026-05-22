@@ -41,26 +41,32 @@ const USERS = [
   },
 ];
 
-async function seed() {
-  const [superAdminExists] = await pool.execute('SELECT id FROM users WHERE role_id = ? LIMIT 1', [ROLES.SUPER_ADMIN]);
-  if (superAdminExists.length > 0) {
-    // Already seeded once; only insert users that don't exist (e.g. new Doctor)
-    for (const u of USERS) {
-      const [existing] = await pool.execute('SELECT id FROM users WHERE email = ?', [u.email]);
-      if (existing.length > 0) continue;
-      const hashedPassword = await bcrypt.hash(u.password, 12);
-      await pool.execute(
-        `INSERT INTO users (email, password, name, role_id, is_active) VALUES (?, ?, ?, ?, 1)`,
-        [u.email, hashedPassword, u.name, u.role_id]
-      );
-      console.log(`Created: ${u.name} – ${u.email}`);
-    }
-    console.log('Seed check complete.');
-    process.exit(0);
+async function ensureSuperAdmin() {
+  const u = USERS[0];
+  const email = u.email.trim().toLowerCase();
+  const hashedPassword = await bcrypt.hash(u.password, 12);
+  const [existing] = await pool.execute('SELECT id FROM users WHERE email = ?', [email]);
+  if (existing.length > 0) {
+    await pool.execute(
+      `UPDATE users SET password = ?, name = ?, role_id = ?, is_active = 1, deleted_at = NULL WHERE id = ?`,
+      [hashedPassword, u.name, u.role_id, existing[0].id]
+    );
+    console.log(`Super Admin ready (updated): ${email}`);
     return;
   }
+  await pool.execute(
+    `INSERT INTO users (email, password, name, role_id, is_active) VALUES (?, ?, ?, ?, 1)`,
+    [email, hashedPassword, u.name, u.role_id]
+  );
+  console.log(`Super Admin ready (created): ${email}`);
+}
 
-  for (const u of USERS) {
+async function seed() {
+  await ensureSuperAdmin();
+
+  for (const u of USERS.slice(1)) {
+    const [existing] = await pool.execute('SELECT id FROM users WHERE email = ?', [u.email]);
+    if (existing.length > 0) continue;
     const hashedPassword = await bcrypt.hash(u.password, 12);
     await pool.execute(
       `INSERT INTO users (email, password, name, role_id, is_active) VALUES (?, ?, ?, ?, 1)`,
@@ -68,8 +74,10 @@ async function seed() {
     );
     console.log(`Created: ${u.name} – ${u.email}`);
   }
+
+  const super = USERS[0];
   console.log('\nLogin credentials:');
-  console.log('  Super Admin:  admin@clinic.com / SuperAdmin@123');
+  console.log(`  Super Admin:  ${super.email} / (password from SEED_SUPER_ADMIN_PASSWORD or default)`);
   console.log('  Admin:        admin@doctordesk.com / Admin@123');
   console.log('  Receptionist: reception@doctordesk.com / Receptionist@123');
   console.log('  Doctors:      doctor@doctordesk.com, doctor2@doctordesk.com / Doctor@123');

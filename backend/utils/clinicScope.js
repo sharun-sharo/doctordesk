@@ -44,4 +44,34 @@ function invoiceBillingDoctorFilter(roleId, userId, assignedAdminId = null) {
   return { sql: ' AND 0 = 1', params: [] };
 }
 
-module.exports = { appointmentDoctorFilter, invoiceBillingDoctorFilter };
+const INVOICE_REVENUE_FROM = `
+  FROM invoices i
+  LEFT JOIN appointments a ON i.appointment_id = a.id AND a.deleted_at IS NULL
+  INNER JOIN patients p ON i.patient_id = p.id AND p.deleted_at IS NULL
+  WHERE i.deleted_at IS NULL`;
+
+/** Sum invoice totals with role-scoped billing doctor (includes assistant doctors for Admin). */
+function invoiceRevenueSumQuery(roleId, userId, assignedAdminId = null, dateSql = '') {
+  const inv = invoiceBillingDoctorFilter(roleId, userId, assignedAdminId);
+  return {
+    sql: `SELECT COALESCE(SUM(i.total), 0) AS total ${INVOICE_REVENUE_FROM}${inv.sql}${dateSql}`,
+    params: [...inv.params],
+  };
+}
+
+/** Sum paid_amount / pending with same scope. */
+function invoiceCollectionSumQuery(roleId, userId, assignedAdminId = null) {
+  const inv = invoiceBillingDoctorFilter(roleId, userId, assignedAdminId);
+  return {
+    sql: `SELECT COALESCE(SUM(i.paid_amount), 0) AS collected, COALESCE(SUM(i.total - i.paid_amount), 0) AS pending ${INVOICE_REVENUE_FROM}${inv.sql}`,
+    params: [...inv.params],
+  };
+}
+
+module.exports = {
+  appointmentDoctorFilter,
+  invoiceBillingDoctorFilter,
+  INVOICE_REVENUE_FROM,
+  invoiceRevenueSumQuery,
+  invoiceCollectionSumQuery,
+};

@@ -1,7 +1,8 @@
 const express = require('express');
 const dashboardController = require('../controllers/dashboardController');
 const { authenticate } = require('../middleware/auth');
-const { staffOnly } = require('../middleware/rbac');
+const { staffOnly, requireRole } = require('../middleware/rbac');
+const { ROLES } = require('../config/roles');
 
 const router = express.Router();
 router.use(authenticate);
@@ -14,5 +15,10 @@ router.get('/patient-chart', dashboardController.getPatientChart);
 router.get('/weekly-patient-trend', dashboardController.getWeeklyPatientTrend);
 router.get('/daily-appointment-distribution', dashboardController.getDailyAppointmentDistribution);
 router.get('/new-vs-returning-chart', dashboardController.getNewVsReturningChart);
+router.get(
+  '/assistant-doctor-revenue',
+  requireRole(ROLES.ADMIN),
+  dashboardController.getAssistantDoctorRevenue
+);
 
 module.exports = router;

@@ -41,10 +41,11 @@ async function login(req, res, next) {
         message: 'Server misconfigured: JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set in .env',
       });
     }
-    const { email, password } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = req.body.password;
     const [rows] = await pool.execute(
       `SELECT u.id, u.email, u.password, u.name, u.role_id, u.assigned_admin_id, u.is_active, u.deleted_at, r.name AS role_name
-       FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?`,
+       FROM users u JOIN roles r ON u.role_id = r.id WHERE LOWER(TRIM(u.email)) = ?`,
       [email]
     );
     if (!rows.length) {

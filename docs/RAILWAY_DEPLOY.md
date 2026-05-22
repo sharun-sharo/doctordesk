@@ -48,6 +48,13 @@ SEED_SUPER_ADMIN_PASSWORD=YourSecurePassword \
 node scripts/seed.js
 ```
 
+**Login fails on production?** Reset the Super Admin password (same `DB_*` env as above):
+
+```bash
+npm run reset-super-admin
+# default: admin@clinic.com / SuperAdmin@123
+```
+
 4. Optional: add demo data for **admin@doctordesk.com** (patients, appointments, prescriptions, invoices):
 
 ```bash
